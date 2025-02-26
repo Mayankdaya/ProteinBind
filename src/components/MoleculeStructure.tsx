@@ -3,7 +3,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { initRDKit } from '@/lib/rdkit';
 
 interface MoleculeStructureProps {
-  smiles: string;
+  smiles?: string;
+  structure?: string;
+  id?: string;
+  width?: number;
+  height?: number;
   options?: {
     width?: number;
     height?: number;
@@ -12,27 +16,34 @@ interface MoleculeStructureProps {
 
 const MoleculeStructure: React.FC<MoleculeStructureProps> = ({ 
   smiles, 
+  structure,
+  width = 300,
+  height = 300,
   options = { width: 300, height: 300 } 
 }) => {
+  const moleculeString = structure || smiles;
+  const finalWidth = width || options.width;
+  const finalHeight = height || options.height;
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const drawMolecule = async () => {
-      if (!smiles || !containerRef.current) return;
+      if (!moleculeString || !containerRef.current) return;
 
       try {
+        console.log('Initializing RDKit...');
         const rdkit = await initRDKit();
         if (!rdkit) {
           throw new Error('Failed to initialize RDKit');
         }
 
+        console.log('RDKit initialized, rendering molecule...');
         containerRef.current.innerHTML = '';
-        const mol = rdkit.get_mol(smiles);
-        
+        const mol = rdkit.get_mol(moleculeString);
         if (mol && mol.is_valid()) {
-          const svg = mol.get_svg(options.width, options.height);
+          const svg = mol.get_svg(width, height);
           containerRef.current.innerHTML = svg;
           mol.delete();
           setError(null);
@@ -48,7 +59,7 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
     };
 
     drawMolecule();
-  }, [smiles, options.width, options.height]);
+  }, [moleculeString, finalWidth, finalHeight]);
 
   if (loading) {
     return (
@@ -71,9 +82,10 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
       ref={containerRef}
       className="flex items-center justify-center bg-white rounded"
       style={{ 
-        width: options.width, 
-        height: options.height,
-        minHeight: '200px'
+        width: finalWidth, 
+        height: finalHeight,
+        minHeight: '200px',
+        margin: 'auto'
       }}
     />
   );

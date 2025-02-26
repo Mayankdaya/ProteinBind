@@ -31,6 +31,7 @@ export default function Page() {
   const [molecules, setMolecules] = useState<Molecule[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [responseDebug, setResponseDebug] = useState("");
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -63,6 +64,7 @@ export default function Page() {
     setLoading(true);
     setError("");
     setMolecules([]);
+    setResponseDebug("");
 
     const payload = {
       algorithm,
@@ -76,6 +78,9 @@ export default function Page() {
     };
 
     try {
+      // Log the payload for debugging
+      console.log("Sending payload:", payload);
+      
       const response = await fetch('/api/nvidia', {
         method: "POST",
         headers: { 
@@ -84,21 +89,45 @@ export default function Page() {
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      // Store the raw response text for debugging
+      const responseText = await response.text();
+      let data;
+      
+      try {
+        // Try to parse the response as JSON
+        data = JSON.parse(responseText);
+        setResponseDebug(`Response status: ${response.status}, Response parsed successfully`);
+      } catch (parseError) {
+        // If parsing fails, show the raw response
+        console.error("Failed to parse response:", parseError);
+        setResponseDebug(`Response status: ${response.status}, Raw response: ${responseText.substring(0, 500)}...`);
+        throw new Error(`Failed to parse response: ${parseError.message}`);
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate molecules');
+        throw new Error(data.error || `Server error: ${response.status}`);
       }
 
-      if (!Array.isArray(data.molecules)) {
-        throw new Error('Invalid response format from server');
+      if (!data.molecules || !Array.isArray(data.molecules)) {
+        setResponseDebug(`Invalid response format. Response data: ${JSON.stringify(data).substring(0, 500)}...`);
+        throw new Error('Invalid response format: molecules array not found');
       }
 
-      const formattedMolecules = data.molecules.map((mol: any) => ({
-        structure: mol.smiles || mol.structure,
-        score: mol.score || 0
-      }));
+      console.log("Received molecules:", data.molecules);
 
+      // Normalize the molecules data
+      const formattedMolecules = data.molecules.map((mol: any, index: number) => {
+        // For debugging
+        console.log(`Processing molecule ${index}:`, mol);
+        
+        return {
+          smiles: mol.smiles || mol.structure || '',
+          structure: mol.smiles || mol.structure || '',
+          score: typeof mol.score === 'number' ? mol.score : 0
+        };
+      });
+
+      console.log("Formatted molecules:", formattedMolecules);
       setMolecules(formattedMolecules);
 
       if (userId) {
@@ -115,7 +144,7 @@ export default function Page() {
         }
       }
     } catch (error: any) {
-      console.error("Error:", error);
+      console.error("Error generating molecules:", error);
       setError(error.message || "An unexpected error occurred");
       setMolecules([]);
     } finally {
@@ -123,27 +152,32 @@ export default function Page() {
     }
   };
 
-  const moleculesContent = Array.isArray(molecules) && molecules.length > 0 ? (
-    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {molecules.map((molecule: Molecule, index: number) => (
-        <div key={index} className="rounded-lg border p-4 dark:border-strokedark bg-white">
-          <div className="w-full aspect-square flex items-center justify-center">
-            <MoleculeStructure
-              id={`mol-${index}`}
-              structure={molecule.smiles || molecule.structure || ''}
-              width={280}
-              height={280}
-              scores={molecule.score}
-            />
-          </div>
-          <div className="mt-2 space-y-1">
-            <p className="text-sm font-medium">Score: {molecule.score?.toFixed(4)}</p>
-            <p className="text-xs break-all text-gray-500">{molecule.smiles || molecule.structure}</p>
-          </div>
+  // Function to check if a SMILES string is valid (basic check)
+  const isValidSmiles = (smiles: string) => {
+    return smiles && smiles.trim().length > 0;
+  };
+
+  const renderInputPreview = () => {
+    if (!smiles || !isValidSmiles(smiles)) {
+      return (
+        <div className="p-4 text-center text-gray-500">
+          Enter a valid SMILES string to see a preview
         </div>
-      ))}
-    </div>
-  ) : null;
+      );
+    }
+
+    return (
+      <div className="w-full aspect-square max-h-64 flex items-center justify-center">
+        <MoleculeStructure
+          id="input-molecule"
+          structure={smiles}
+          width={280}
+          height={280}
+          svgMode={true}
+        />
+      </div>
+    );
+  };
 
   return (
     <DefaultLayout>
@@ -201,6 +235,7 @@ export default function Page() {
                     value={numMolecules.toString()}
                     onChange={(e) => setNumMolecules(Number(e.target.value) || 1)}
                     min="1"
+                    max="100"
                     className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
                     required
                   />
@@ -231,6 +266,7 @@ export default function Page() {
                     value={particles.toString()}
                     onChange={(e) => setParticles(Number(e.target.value) || 1)}
                     min="1"
+                    max="100"
                     className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
                     required
                   />
@@ -245,6 +281,7 @@ export default function Page() {
                     value={iterations.toString()}
                     onChange={(e) => setIterations(Number(e.target.value) || 1)}
                     min="1"
+                    max="50"
                     className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
                     required
                   />
@@ -281,13 +318,76 @@ export default function Page() {
               </div>
             </form>
 
-            {error && (
-              <div className="mt-4 rounded-lg bg-danger-light p-4 text-danger">
-                {error}
+            {/* Loading indicator */}
+            {loading && (
+              <div className="mt-4 p-4 rounded-lg border border-blue-200 bg-blue-50 text-blue-700">
+                <div className="flex items-center space-x-2">
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Generating molecules... This may take a few moments.</span>
+                </div>
               </div>
             )}
 
-            {moleculesContent}
+            {/* Error display */}
+            {error && (
+              <div className="mt-4 rounded-lg bg-danger-light p-4 text-danger">
+                <strong>Error:</strong> {error}
+              </div>
+            )}
+
+            {/* Debug information (for development only) */}
+            {responseDebug && (
+              <div className="mt-4 p-4 rounded-lg border border-gray-200 bg-gray-50">
+                <details>
+                  <summary className="cursor-pointer font-medium">Debug Information (click to expand)</summary>
+                  <pre className="mt-2 text-xs overflow-auto">{responseDebug}</pre>
+                </details>
+              </div>
+            )}
+
+            {/* Input molecule preview */}
+            <div className="mt-4 p-4 border rounded-lg">
+              <h3 className="text-lg font-medium mb-2">Input Molecule Preview</h3>
+              {renderInputPreview()}
+              <p className="mt-2 text-xs break-all text-gray-500">{smiles}</p>
+            </div>
+
+            {/* Results display */}
+            {Array.isArray(molecules) && molecules.length > 0 ? (
+              <div className="mt-4">
+                <h3 className="text-lg font-medium mb-2">Generated Molecules ({molecules.length})</h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {molecules.map((molecule: Molecule, index: number) => (
+                    <div key={index} className="rounded-lg border p-4 dark:border-strokedark bg-white">
+                      <div className="w-full aspect-square flex items-center justify-center">
+                        {molecule.smiles || molecule.structure ? (
+                          <MoleculeStructure
+                            id={`mol-${index}`}
+                            structure={molecule.smiles || molecule.structure || ''}
+                            width={280}
+                            height={280}
+                            scores={molecule.score}
+                            svgMode={true}
+                            drawingDelay={index * 100}
+                          />
+                        ) : (
+                          <div className="p-4 text-center text-red-500">
+                            Invalid molecule structure
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        <p className="text-sm font-medium">Score: {molecule.score?.toFixed(4)}</p>
+                        <p className="text-xs break-all text-gray-500">{molecule.smiles || molecule.structure}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

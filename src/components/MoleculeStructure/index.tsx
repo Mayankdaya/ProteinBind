@@ -46,90 +46,113 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
     let rdkitInstance: any = null;
     let moleculeInstance: any = null;
     let subStructureInstance: any = null;
+    let retryCount = 0;
+    const maxRetries = 3;
 
     const drawMolecule = async () => {
-      if (!svgContainerRef.current || !mounted) return;
+      if (!mounted) return;
       setLoading(true);
       setProcessingState('initializing');
       setError(null);
 
-      const draw = () => {
-        try {
-          const moleculeString = smiles || structure || "";
-          if (!moleculeString) {
-            throw new Error('No molecule structure provided');
-          }
-
-          moleculeInstance = rdkitInstance.get_mol(moleculeString);
-          subStructureInstance = rdkitInstance.get_qmol(subStructure || "invalid");
-
-          if (!moleculeInstance || !moleculeInstance.is_valid()) {
-            throw new Error('Invalid molecule structure');
-          }
-
-          if (svgMode) {
-            const svg = moleculeInstance.get_svg_with_highlights(
-              JSON.stringify({
-                ...molDetails,
-                ...(subStructureInstance && subStructureInstance.is_valid() ? 
-                  JSON.parse(moleculeInstance.get_substruct_matches(subStructureInstance)) : {})
-              })
-            );
-            if (!svg) {
-              throw new Error('Failed to generate SVG');
-            }
-            if (mounted && svgContainerRef.current) {
-              svgContainerRef.current.innerHTML = svg;
-            }
-          } else {
-            const canvas = canvasRef.current;
-            if (!canvas) {
-              throw new Error('Canvas element not found');
-            }
-            const context = canvas.getContext('2d');
-            if (!context) {
-              throw new Error('Failed to get canvas context');
-            }
-            context.clearRect(0, 0, canvas.width, canvas.height);
-            moleculeInstance.draw_to_canvas_with_highlights(
-              canvas,
-              JSON.stringify({
-                ...molDetails,
-                ...(subStructureInstance && subStructureInstance.is_valid() ? 
-                  JSON.parse(moleculeInstance.get_substruct_matches(subStructureInstance)) : {})
-              })
-            );
-          }
-        } catch (error) {
-          console.error('Error drawing molecule:', error);
-          if (mounted) {
-            setError(error instanceof Error ? error.message : 'Failed to render molecule');
-          }
-        }
-      };
+      const moleculeString = smiles || structure || "";
+      if (!moleculeString) {
+        setError('No molecule structure provided');
+        setLoading(false);
+        setProcessingState('ready');
+        return;
+      }
 
       try {
-        rdkitInstance = await initRDKit();
-        if (!rdkitInstance) {
-          throw new Error('RDKit initialization failed');
+        while (retryCount < maxRetries) {
+          try {
+            rdkitInstance = await initRDKit();
+            if (rdkitInstance) break;
+            retryCount++;
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+          } catch (error) {
+            if (retryCount === maxRetries - 1) throw error;
+            retryCount++;
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+          }
         }
+
+        if (!rdkitInstance) {
+          throw new Error('Failed to initialize RDKit after multiple attempts');
+        }
+
         setProcessingState('processing');
+
+        const draw = () => {
+          try {
+            const moleculeString = smiles || structure || "";
+            if (!moleculeString) {
+              throw new Error('No molecule structure provided');
+            }
+
+            moleculeInstance = rdkitInstance.get_mol(moleculeString);
+            if (subStructure) {
+              subStructureInstance = rdkitInstance.get_qmol(subStructure);
+            }
+
+            if (!moleculeInstance || !moleculeInstance.is_valid()) {
+              throw new Error('Invalid molecule structure');
+            }
+
+            if (svgMode && svgContainerRef.current) {
+              const svg = moleculeInstance.get_svg_with_highlights(
+                JSON.stringify({
+                  ...molDetails,
+                  width: width || 300,
+                  height: height || 200,
+                  ...(subStructureInstance && subStructureInstance.is_valid() ? 
+                    JSON.parse(moleculeInstance.get_substruct_matches(subStructureInstance)) : {})
+                })
+              );
+              if (!svg) {
+                throw new Error('Failed to generate SVG');
+              }
+              svgContainerRef.current.innerHTML = svg;
+            } else if (canvasRef.current) {
+              const canvas = canvasRef.current;
+              const context = canvas.getContext('2d');
+              if (!context) {
+                throw new Error('Failed to get canvas context');
+              }
+              context.clearRect(0, 0, canvas.width, canvas.height);
+              moleculeInstance.draw_to_canvas_with_highlights(
+                canvas,
+                JSON.stringify({
+                  ...molDetails,
+                  width: width || 300,
+                  height: height || 200,
+                  ...(subStructureInstance && subStructureInstance.is_valid() ? 
+                    JSON.parse(moleculeInstance.get_substruct_matches(subStructureInstance)) : {})
+                })
+              );
+            }
+            setProcessingState('ready');
+            setLoading(false);
+          } catch (error) {
+            console.error('Error drawing molecule:', error);
+            if (mounted) {
+              setError(error instanceof Error ? error.message : 'Failed to render molecule');
+              setProcessingState('ready');
+              setLoading(false);
+            }
+          }
+        };
 
         if (drawingDelay) {
           setTimeout(draw, drawingDelay);
         } else {
           draw();
         }
-        
-        setProcessingState('ready');
       } catch (error) {
         console.error('Error initializing RDKit:', error);
         if (mounted) {
           setError(error instanceof Error ? error.message : 'Failed to initialize RDKit');
           setProcessingState('ready');
-        }
-      } finally {
-        if (mounted) {
           setLoading(false);
         }
       }
@@ -160,18 +183,18 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
   }, [smiles, structure, width, height, svgMode, subStructure, extraDetails, drawingDelay]);
 
   const renderLoadingState = () => (
-    <div className="flex flex-col items-center justify-center w-full h-full min-h-[200px] bg-gray-50 dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+    <div className="flex flex-col items-center justify-center w-full h-full min-h-[200px] bg-transparent p-4 rounded-lg">
       <div className="w-8 h-8 mb-4 border-t-2 border-primary border-solid rounded-full animate-spin" />
-      <div className="text-gray-600 dark:text-gray-300">
-        {processingState === 'initializing' ? 'Initializing RDKit...' : 'Processing molecule...'}
+      <div className="text-gray-600 dark:text-gray-300 text-sm">
+        {processingState === 'initializing' ? 'Initializing...' : 'Processing...'}
       </div>
     </div>
   );
 
   const renderError = () => (
-    <div className="flex items-center justify-center w-full h-full min-h-[200px] bg-red-50 dark:bg-red-900/20 p-4 rounded-lg shadow-sm">
-      <div className="flex items-center text-red-600 dark:text-red-400">
-        <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="flex items-center justify-center w-full h-full min-h-[200px] bg-transparent p-4 rounded-lg">
+      <div className="flex items-center text-red-600 dark:text-red-400 text-sm">
+        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span>{error}</span>
@@ -179,12 +202,12 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
     </div>
   );
 
-  if (loading) {
-    return renderLoadingState();
-  }
-
   if (error) {
     return renderError();
+  }
+
+  if (loading) {
+    return renderLoadingState();
   }
 
   return (
@@ -192,11 +215,11 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
       {svgMode ? (
         <div
           ref={svgContainerRef}
-          className="flex items-center justify-center bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 transition-all duration-200"
+          className="flex items-center justify-center bg-white dark:bg-boxdark rounded-lg p-2 transition-all duration-200"
           style={{ width, height, minHeight: '200px' }}
         />
       ) : (
-        <div className="flex items-center justify-center bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 transition-all duration-200"
+        <div className="flex items-center justify-center bg-white dark:bg-boxdark rounded-lg p-2 transition-all duration-200"
           style={{ width, height, minHeight: '200px' }}>
           <canvas
             ref={canvasRef}

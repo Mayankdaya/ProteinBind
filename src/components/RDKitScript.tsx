@@ -6,11 +6,18 @@ const RDKitScript = () => {
   return (
     <>
       <Script
-        src="https://unpkg.com/@rdkit/rdkit/Code/MinimalLib/dist/RDKit_minimal.js"
+        src="/_next/static/chunks/RDKit_minimal.js"
         strategy="beforeInteractive"
         onLoad={() => {
-          window.initRDKitModule = window.RDKit;
-          console.log('RDKit loaded successfully');
+          if (typeof window !== 'undefined' && window.RDKit) {
+            window.initRDKitModule = window.RDKit;
+            console.log('RDKit loaded successfully');
+          } else {
+            console.error('RDKit not found in window object');
+          }
+        }}
+        onError={(e) => {
+          console.error('Failed to load RDKit script:', e);
         }}
       />
     </>

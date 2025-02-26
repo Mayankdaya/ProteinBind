@@ -6,6 +6,9 @@ const nextConfig = {
   images: {
     domains: ['img.clerk.com'],
   },
+  experimental: {
+    forceSwcTransforms: true
+  },
   webpack(config, { isServer }) {
     // Add WASM support
     config.experiments = {
