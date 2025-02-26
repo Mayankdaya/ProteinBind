@@ -30,104 +30,58 @@ export const initRDKit = async () => {
       if (typeof window !== 'undefined') {
         debugLog("Running in browser environment");
         
-        // Use the correct path from public directory
-        const wasmPath = window.RDKitCustomPaths?.wasmPath || '/static/wasm/RDKit_minimal.wasm';
-        const jsPath = window.RDKitCustomPaths?.jsPath || '/static/wasm/RDKit_minimal.js';
+        // Use custom paths if configured, otherwise use defaults
+        const customPaths = window.RDKitCustomPaths || {};
+        const wasmPath = customPaths.wasmPath || '/static/wasm/RDKit_minimal.wasm';
+        const jsPath = customPaths.jsPath || '/static/wasm/RDKit_minimal.js';
         
-        // Ensure paths are absolute
-        const baseUrl = window.location.origin;
-        const absoluteWasmPath = wasmPath.startsWith('http') ? wasmPath : `${baseUrl}${wasmPath}`;
-        const absoluteJsPath = jsPath.startsWith('http') ? jsPath : `${baseUrl}${jsPath}`;
+        debugLog(`WASM Path: ${wasmPath}`);
+        debugLog(`JS Path: ${jsPath}`);
         
-        debugLog(`Checking WASM file at: ${wasmPath}`);
-        
-        // First check if WASM file exists
+        // Pre-check WASM file availability
         fetch(wasmPath)
           .then(response => {
             if (!response.ok) {
-              debugLog(`WASM file not found at ${wasmPath}`, response.status);
               throw new Error(`WASM file not found (status: ${response.status})`);
             }
+            debugLog("WASM file verified");
             
-            debugLog("WASM file found, now loading JS");
-            
-            // Remove any existing script to avoid conflicts
-            const existingScript = document.querySelector('script[src*="RDKit_minimal.js"]');
-            if (existingScript) {
-              debugLog("Removing existing RDKit script");
-              existingScript.remove();
-            }
-            
-            const script = document.createElement('script');
-            script.src = jsPath;
-            script.async = true;
-            
-            // Set up more detailed event handlers
-            script.onload = async () => {
-              debugLog("Script loaded, initializing RDKit module");
-              try {
-                // Add a global function to check if initialization is working
-                window.RDKitModuleIsReady = false;
-                window.initRDKitModule = initRDKitModule;
-                
-                debugLog("Calling initRDKitModule");
-                const RDKit = await initRDKitModule();
-                
-                if (!RDKit) {
-                  debugLog("RDKit initialization returned null/undefined");
-                  throw new Error('RDKit initialization failed - returned null');
+            // Set the locateFile function for RDKit module
+            const RDKitModule = {
+              locateFile: (file: string) => {
+                if (file.endsWith('.wasm')) {
+                  return wasmPath;
                 }
-                
-                // Test if RDKit is working by creating a simple molecule
-                try {
-                  const testMol = RDKit.get_mol("C");
-                  if (testMol) {
-                    debugLog("Successfully created test molecule");
-                    testMol.delete();
-                  } else {
-                    debugLog("Failed to create test molecule");
-                  }
-                } catch (testError) {
-                  debugLog("Error testing RDKit functionality", testError);
-                }
-                
-                window.RDKitModuleIsReady = true;
-                rdkitInstance = RDKit;
-                debugLog("RDKit initialized successfully");
-                resolve(RDKit);
-              } catch (error) {
-                debugLog("Failed to initialize RDKit", error);
-                reject(error);
+                return jsPath;
               }
             };
             
-            script.onerror = (error) => {
-              debugLog("Failed to load RDKit script", error);
-              reject(new Error('Failed to load RDKit script'));
-            };
-            
-            // Add more detailed progress tracking
-            debugLog("Appending script to document head");
-            document.head.appendChild(script);
+            // Initialize RDKit with proper WASM location
+            return initRDKitModule(RDKitModule);
           })
-          .catch(error => {
-            debugLog("Failed during WASM loading or script execution", error);
-            reject(error);
+          .then((RDKit) => {
+            debugLog("RDKit module initialized successfully");
+            rdkitInstance = RDKit;
+            resolve(RDKit);
+          })
+          .catch((error) => {
+            debugLog("Failed to initialize RDKit module", error);
+            reject(new Error(`Failed to initialize RDKit: ${error.message}`));
           });
       } else {
-        debugLog("Window is not defined (not in browser)");
-        reject(new Error('Window is not defined'));
+        reject(new Error('RDKit initialization is only supported in browser environment'));
       }
-    }).catch(error => {
-      debugLog("RDKit initialization error, clearing promise", error);
-      rdkitPromise = null;
-      throw error;
     });
-  } else {
-    debugLog("Using existing rdkitPromise");
   }
-
-  return rdkitPromise;
+  
+  try {
+    const instance = await rdkitPromise;
+    return instance;
+  } catch (error) {
+    debugLog("Error in initRDKit", error);
+    rdkitPromise = null; // Reset promise to allow retry
+    throw error;
+  }
 };
 
 // Alternative paths configuration
@@ -200,8 +154,9 @@ export const renderMoleculeFromSmiles = async (
     try {
       const element = document.getElementById(elementId);
       if (element) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
         element.innerHTML = `<div style="color: red; border: 1px solid red; padding: 10px;">
-          Error rendering molecule: ${error.message || "Unknown error"}
+          Error rendering molecule: ${errorMessage}
         </div>`;
       }
     } catch (e) {
@@ -239,7 +194,7 @@ export const createMoleculeElement = async (smiles: string, width: number = 300,
     errorElement.style.color = 'red';
     errorElement.style.border = '1px solid red';
     errorElement.style.padding = '10px';
-    errorElement.textContent = `Error: ${error.message || "Unknown error"}`;
+    errorElement.textContent = `Error: ${error instanceof Error ? error.message : "Unknown error"}`;
     return errorElement;
   }
 };
@@ -276,7 +231,7 @@ export const testRDKitSetup = async () => {
     return "RDKit tests completed. Check console for details.";
   } catch (error) {
     debugLog("RDKit test failed", error);
-    return `RDKit test failed: ${error.message || "Unknown error"}`;
+    return `RDKit test failed: ${error instanceof Error ? error.message : "Unknown error"}`;
   }
 };
 
@@ -299,7 +254,8 @@ export const getSvgStringFromSmiles = async (
     
     return svg;
   } catch (error) {
-    return `<svg width="${width}" height="${height}"><text x="10" y="20" fill="red">Error: ${error.message || "Unknown error"}</text></svg>`;
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return `<svg width="${width}" height="${height}"><text x="10" y="20" fill="red">Error: ${errorMessage}</text></svg>`;
   }
 };
 
@@ -322,10 +278,13 @@ export const checkRDKitStatus = () => {
 export const tryDirectImport = async () => {
   try {
     debugLog("Trying direct import of RDKit");
-    const RDKit = await initRDKitModule();
-    rdkitInstance = RDKit;
+    const RDKitModule = await initRDKitModule;
+    if (typeof RDKitModule !== 'object' || RDKitModule === null) {
+      throw new Error('RDKit module did not initialize correctly');
+    }
+    rdkitInstance = RDKitModule;
     debugLog("Direct import successful");
-    return RDKit;
+    return RDKitModule;
   } catch (error) {
     debugLog("Direct import failed", error);
     throw error;
@@ -333,9 +292,11 @@ export const tryDirectImport = async () => {
 };
 
 declare global {
+  type RDKitLoader = () => Promise<any>;
+
   interface Window {
-    RDKit: () => Promise<any>;
-    initRDKitModule: typeof initRDKitModule;
+    RDKit: RDKitLoader;
+    initRDKitModule: RDKitLoader;
     RDKitModuleIsReady: boolean;
     RDKitCustomPaths?: {
       wasmPath: string;
@@ -343,3 +304,4 @@ declare global {
     };
   }
 }
+

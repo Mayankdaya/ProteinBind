@@ -168,15 +168,50 @@ export default function Page() {
 
     return (
       <div className="w-full aspect-square max-h-64 flex items-center justify-center">
-        <MoleculeStructure
-          id="input-molecule"
-          structure={smiles}
-          width={280}
-          height={280}
-          svgMode={true}
-        />
+        <div className="w-full h-full flex items-center justify-center">
+          {error ? (
+            <div className="p-4 text-center text-red-500">
+              <p>Failed to render molecule structure</p>
+              <p className="text-sm mt-2">Please check if the SMILES string is valid</p>
+            </div>
+          ) : (
+            <MoleculeViewer
+              smiles={smiles}
+              width={280}
+              height={280}
+              onError={(err) => setError(err)}
+            />
+          )}
+        </div>
       </div>
     );
+  };
+
+  const renderMoleculeGrid = () => {
+    return molecules.map((molecule, index) => (
+      <div key={index} className="border rounded-lg p-4 bg-white shadow-sm">
+        <div className="w-full aspect-square flex items-center justify-center">
+          {!molecule.smiles && !molecule.structure ? (
+            <div className="p-4 text-center text-red-500">
+              <p>Invalid molecule structure</p>
+              <p className="text-sm mt-2">Unable to render molecule</p>
+            </div>
+          ) : (
+            <MoleculeViewer
+              smiles={molecule.smiles || molecule.structure || ''}
+              width={200}
+              height={200}
+              onError={(err) => setError(err)}
+            />
+          )}
+        </div>
+        {molecule.score !== undefined && (
+          <p className="text-center mt-2 text-sm font-medium">
+            Score: {molecule.score.toFixed(3)}
+          </p>
+        )}
+      </div>
+    ));
   };
 
   return (

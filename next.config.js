@@ -49,6 +49,15 @@ const nextConfig = {
   async headers() {
     return [
       {
+        source: '/_next/static/wasm/:path*',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/wasm',
+          },
+        ],
+      },
+      {
         source: "/:path*",
         headers: [
           {
