@@ -12,10 +12,10 @@ import {
   Atom,
   Network,
   Microscope,
-  Settings,
   MessageSquareText,
   ChevronLeft,
 } from "lucide-react";
+
 interface SidebarProps {
   sidebarOpen: boolean;
   setSidebarOpen: (arg: boolean) => void;
@@ -52,16 +52,6 @@ const menuGroups = [
       },
     ],
   },
-  {
-    name: "OTHERS",
-    menuItems: [
-      {
-        icon: <Settings size={25} />,
-        label: "Settings",
-        route: "/settings",
-      },
-    ],
-  },
 ];
 
 const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
@@ -71,7 +61,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
   return (
     <ClickOutside onClick={() => setSidebarOpen(false)}>
       <aside
-        className={`fixed left-0 top-0 z-9999 flex h-screen w-72.5 flex-col overflow-y-hidden bg-black duration-300 ease-linear dark:bg-[#000000] lg:translate-x-0 ${
+        className={`fixed left-0 top-0 z-50 flex h-screen w-72.5 flex-col overflow-y-hidden bg-black duration-300 ease-linear dark:bg-[#000000] lg:static lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -94,7 +84,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-controls="sidebar"
-            className="block lg:hidden"
+            className="block lg:hidden text-white"
           >
             <ChevronLeft />
           </button>

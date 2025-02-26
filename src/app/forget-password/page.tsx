@@ -7,7 +7,7 @@ import {
 import DefaultLayout from "@/components/Layouts/DefaultLayout";
 import { useRouter } from "next/navigation";
 import { MailIcon } from "lucide-react";
-import { useSession } from "next-auth/react";
+import { useUser } from "@clerk/nextjs";
 
 const ForgetPasswordPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -16,12 +16,12 @@ const ForgetPasswordPage: React.FC = () => {
   >("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const router = useRouter();
-  const { data: session } = useSession();
+  const { user } = useUser();
   const [user, setUser] = useState<string | any>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
-      if (session?.user?.email) {
+      if (user?.emailAddresses[0]?.emailAddress) {
         try {
           const fetchedUser = await getUserByEmail(session.user.email);
           setUser(fetchedUser);
@@ -32,7 +32,7 @@ const ForgetPasswordPage: React.FC = () => {
     };
 
     fetchUser();
-  }, [session?.user?.email]);
+  }, [user?.emailAddresses[0]?.emailAddress]);
   console.log(user);
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -4,12 +4,12 @@ import Image from "next/image";
 import DefaultLayout from "@/components/Layouts/DefaultLayout";
 import DarkModeSwitcher from "@/components/Header/DarkModeSwitcher";
 import { Edit, MailIcon, CameraIcon, User } from "lucide-react";
-import { useSession } from "next-auth/react";
+import { useUser } from "@clerk/nextjs";
 import React, { useState, useEffect } from "react";
 import { getUserByEmail, updateUser } from "@/lib/actions/user.actions";
 
 const Settings = () => {
-  const { data: session } = useSession();
+  const { user } = useUser();
   const [userData, setUserData] = useState({
     firstName: "",
     lastName: "",
@@ -24,8 +24,8 @@ const Settings = () => {
 
   useEffect(() => {
     const fetchUserData = async () => {
-      if (session?.user?.email) {
-        const user = await getUserByEmail(session.user.email);
+      if (user?.emailAddresses[0]?.emailAddress) {
+        const userData = await getUserByEmail(user.emailAddresses[0].emailAddress);
         setUserData({
           firstName: user.firstName,
           lastName: user.lastName,
@@ -38,7 +38,7 @@ const Settings = () => {
     };
 
     fetchUserData();
-  }, [session?.user?.email]);
+  }, [user?.emailAddresses[0]?.emailAddress]);
 
   const handlePersonalInfoSubmit = async (
     e: React.FormEvent<HTMLFormElement>,

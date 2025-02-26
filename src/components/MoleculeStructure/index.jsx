@@ -39,8 +39,8 @@ class MoleculeStructure extends Component {
   static defaultProps = {
     subStructure: "",
     className: "",
-    width: 250,
-    height: 200,
+    width: 300,
+    height: 250,
     svgMode: false,
     extraDetails: {},
     drawingDelay: undefined,
@@ -87,20 +87,36 @@ class MoleculeStructure extends Component {
   }
 
   drawSVGorCanvas() {
-    const mol = this.RDKit.get_mol(this.props.structure || "invalid");
-    const qmol = this.RDKit.get_qmol(this.props.subStructure || "invalid");
-    const isValidMol = this.isValidMol(mol);
+    try {
+      const mol = this.RDKit.get_mol(this.props.structure || "invalid");
+      const qmol = this.RDKit.get_qmol(this.props.subStructure || "invalid");
+      const isValidMol = this.isValidMol(mol);
 
-    if (this.props.svgMode && isValidMol) {
-      const svg = mol.get_svg_with_highlights(this.getMolDetails(mol, qmol));
-      this.setState({ svg });
-    } else if (isValidMol) {
-      const canvas = document.getElementById(this.props.id);
-      mol.draw_to_canvas_with_highlights(canvas, this.getMolDetails(mol, qmol));
+      if (this.props.svgMode && isValidMol) {
+        const svg = mol.get_svg_with_highlights(this.getMolDetails(mol, qmol));
+        this.setState({ svg });
+      } else if (isValidMol) {
+        const canvas = document.getElementById(this.props.id);
+        if (!canvas) {
+          console.error(`Canvas element with id ${this.props.id} not found`);
+          return;
+        }
+        const context = canvas.getContext('2d');
+        if (!context) {
+          console.error('Failed to get canvas context');
+          return;
+        }
+        // Clear the canvas before drawing
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        mol.draw_to_canvas_with_highlights(canvas, this.getMolDetails(mol, qmol));
+      }
+
+      mol?.delete();
+      qmol?.delete();
+    } catch (error) {
+      console.error('Error in drawSVGorCanvas:', error);
+      this.setState({ rdKitError: true });
     }
-
-    mol?.delete();
-    qmol?.delete();
   }
 
   isValidMol(mol) {
@@ -137,22 +153,10 @@ class MoleculeStructure extends Component {
   }
 
   componentDidMount() {
-    initRDKit()
-      .then((RDKit) => {
-        this.RDKit = RDKit;
-        this.setState({ rdKitLoaded: true });
-        try {
-          this.draw();
-        } catch (err) {
-          console.log(err);
-        }
-      })
-      .catch((err) => {
-        console.log(err);
-        this.setState({ rdKitError: true });
-      });
+    if (!this.state.rdKitLoaded && !this.state.rdKitError) {
+      this.initializeRDKit();
+    }
   }
-
   componentDidUpdate(prevProps) {
     if (
       !this.state.rdKitError &&
@@ -178,6 +182,20 @@ class MoleculeStructure extends Component {
   }
 
   render() {
+    if (this.state.rdKitError) {
+      return (
+        <div className="p-4 text-red-500 bg-red-100 rounded-lg">
+          Failed to initialize molecule renderer. Please try refreshing the page.
+        </div>
+      );
+    }
+    if (!this.state.rdKitLoaded) {
+      return (
+        <div className="p-4 text-blue-500 bg-blue-100 rounded-lg">
+          Initializing molecule renderer...
+        </div>
+      );
+    }
     console.log("props score number:", this.props.scores);
     if (this.state.rdKitError) {
       return "Error loading renderer.";
@@ -228,6 +246,36 @@ class MoleculeStructure extends Component {
         </div>
       );
     }
+  }
+  initializeRDKit(retryCount = 0) {
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second
+  
+    initRDKit()
+      .then((RDKit) => {
+        if (!RDKit) {
+          throw new Error('Failed to initialize RDKit');
+        }
+        this.RDKit = RDKit;
+        this.setState({ rdKitLoaded: true, rdKitError: false });
+        try {
+          this.draw();
+        } catch (err) {
+          console.error('Error drawing molecule:', err);
+          this.setState({ rdKitError: true });
+        }
+      })
+      .catch((err) => {
+        console.error('Error initializing RDKit:', err);
+        if (retryCount < maxRetries) {
+          console.log(`Retrying RDKit initialization (${retryCount + 1}/${maxRetries})...`);
+          setTimeout(() => {
+            this.initializeRDKit(retryCount + 1);
+          }, retryDelay * (retryCount + 1));
+        } else {
+          this.setState({ rdKitError: true });
+        }
+      });
   }
 }
 

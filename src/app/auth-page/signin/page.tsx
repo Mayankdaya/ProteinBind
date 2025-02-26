@@ -1,148 +1,45 @@
-"use client";
-import React, { useState } from "react";
-import Link from "next/link";
-import { LoaderCircle, LockIcon, MailIcon } from "lucide-react";
-import DefaultLayout from "@/components/Layouts/DefaultLayout";
-import ComponentHeader from "@/components/ComponentHeader/ComponentHeader";
-import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { SignIn } from "@clerk/nextjs";
 
-const SignIn: React.FC = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const router = useRouter();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true);
-
-    // Basic form validation
-    if (!email || !password) {
-      setError("Please fill in all fields.");
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      // Use NextAuth's signIn function
-      const result = await signIn("credentials", {
-        redirect: false, // Prevent auto-redirect
-        email,
-        password,
-      });
-
-      if (result?.error) {
-        setError(result.error); // Handle login error
-      } else {
-        // Navigate to the dashboard or another page on successful login
-        router.push("/");
-      }
-    } catch (err: any) {
-      // Handle unexpected error
-      setError("Something went wrong. Please try again.");
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+export default function Page() {
   return (
-    <DefaultLayout>
-      <ComponentHeader pageName="Sign In" />
-
-      <div className="rounded-lg border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
-        <div className="flex flex-wrap items-center">
-          <div className="mx-auto w-full xl:w-4/6">
-            <div className="w-full p-4 sm:p-12.5 xl:p-17.5">
-              <span className="mb-1.5 block font-medium">Start for free</span>
-              <h2 className="mb-9 text-2xl font-bold text-black dark:text-white sm:text-title-xl2">
-                Sign In to ProteinBind
-              </h2>
-
-              {error && <div className="text-red-500 mb-4">{error}</div>}
-
-              <form onSubmit={handleSubmit}>
-                <div className="mb-4">
-                  <label className="mb-2.5 block font-medium text-black dark:text-white">
-                    Email
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your email"
-                      className="w-full rounded-lg border border-stroke bg-transparent py-4 pl-6 pr-10 text-black outline-none focus:border-primary focus-visible:shadow-none dark:border-form-strokedark dark:bg-form-input dark:text-white dark:focus:border-primary"
-                      required
-                      disabled={isLoading}
-                    />
-                    <span className="absolute right-4 top-4">
-                      <MailIcon />
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mb-6">
-                  <label className="mb-2.5 block font-medium text-black dark:text-white">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="6+ Characters, 1 Capital letter"
-                      className="w-full rounded-lg border border-stroke bg-transparent py-4 pl-6 pr-10 text-black outline-none focus:border-primary focus-visible:shadow-none dark:border-form-strokedark dark:bg-form-input dark:text-white dark:focus:border-primary"
-                      required
-                      disabled={isLoading}
-                    />
-                    <span className="absolute right-4 top-4">
-                      <LockIcon />
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mb-5">
-                  <button
-                    type="submit"
-                    className="w-full cursor-pointer rounded-lg border border-primary bg-primary p-4 text-white transition hover:bg-opacity-90"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <span className="flex items-center justify-center">
-                        <LoaderCircle className="mr-2 animate-spin" /> Signing
-                        In...
-                      </span>
-                    ) : (
-                      "Sign In"
-                    )}
-                  </button>
-                </div>
-
-                <div className="mt-6 text-center">
-                  <p>
-                    Don’t have an account?{" "}
-                    <Link href="/auth-page/signup" className="text-primary">
-                      Sign Up
-                    </Link>
-                  </p>
-                  <p>
-                    Forgot Password?{" "}
-                    <Link href="/forget-password" className="text-primary">
-                      Reset
-                    </Link>
-                  </p>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-boxdark px-4 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-8">
+        <SignIn 
+          appearance={{
+            elements: {
+              rootBox: "mx-auto w-full",
+              card: "bg-white dark:bg-boxdark shadow-xl rounded-xl p-8 border border-gray-100 dark:border-gray-700",
+              headerTitle: "text-3xl font-bold text-gray-900 dark:text-white text-center mb-2",
+              headerSubtitle: "text-gray-500 dark:text-gray-400 text-center text-lg mb-8",
+              formButtonPrimary: "w-full bg-primary hover:bg-opacity-90 text-white py-3.5 rounded-lg font-semibold transition-all duration-200 shadow-sm hover:shadow-md",
+              footerAction: "text-gray-600 dark:text-gray-400 text-center mt-6 text-sm",
+              formFieldLabel: "text-gray-700 dark:text-gray-300 font-medium block mb-2 text-sm",
+              formFieldInput: "w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 focus:border-primary dark:focus:border-primary focus:ring-2 focus:ring-primary focus:ring-opacity-20 transition-all duration-200",
+              socialButtonsBlockButton: "w-full border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3 mt-3 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all duration-200 flex items-center justify-center gap-3 font-medium",
+              dividerLine: "bg-gray-200 dark:bg-gray-700",
+              dividerText: "text-gray-500 dark:text-gray-400 px-3 text-sm",
+              formFieldError: "text-red-500 text-sm mt-1.5 font-medium",
+              alert: "rounded-lg p-4 mb-6 border",
+              alertText: "text-sm font-medium",
+              card__background: "bg-white dark:bg-boxdark",
+              identityPreview: "bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg",
+              identityPreviewText: "text-gray-700 dark:text-gray-300",
+              identityPreviewEditButton: "text-primary hover:text-primary-dark"
+            },
+            layout: {
+              socialButtonsPlacement: "bottom",
+              showOptionalFields: false,
+              shimmer: true
+            }
+          }}
+          routing={{
+            afterSignInUrl: "/dashboard",
+            afterSignUpUrl: "/dashboard",
+            signUpUrl: "/auth-page/signup"
+          }}
+          redirectUrl="/dashboard"
+        />
       </div>
-    </DefaultLayout>
+    </div>
   );
-};
-
-export default SignIn;
+}

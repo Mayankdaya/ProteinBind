@@ -1,9 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useUser } from "@/app/context/UserContext";
-import { signOut } from "next-auth/react";
+import { useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, Settings, User2 } from "lucide-react";
+import { ChevronDown, LogOut, User2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import ClickOutside from "@/components/ClickOutside";
@@ -12,10 +12,11 @@ const DropdownUser = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const user = useUser();
   const router = useRouter();
+  const { signOut } = useClerk();
 
   const handleLogout = async () => {
-    await signOut({ redirect: false });
-    router.push("/auth-page/signin");
+    await signOut();
+    router.push("/auth/sign-in");
   };
 
   return (
@@ -59,15 +60,6 @@ const DropdownUser = () => {
               >
                 <User2 />
                 My Profile
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/settings"
-                className="flex items-center gap-3.5 text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base"
-              >
-                <Settings />
-                Account Settings
               </Link>
             </li>
           </ul>

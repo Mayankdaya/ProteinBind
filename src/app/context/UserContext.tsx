@@ -1,41 +1,38 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-} from "react";
-import { useSession } from "next-auth/react";
-import { getUserByEmail } from "@/lib/actions/user.actions";
+"use client";
+import { createContext, useContext, ReactNode, useState } from "react";
 
-const UserContext = createContext<any>(null);
-export const UserProvider = ({ children }: { children: ReactNode }) => {
-  const { data: session } = useSession();
-  const [user, setUser] = useState({
-    firstName: "John",
-    lastName: "Doe",
-    photo: "/images/user/user-01.png",
-    jobTitle: "Drug Researcher",
-    userBio: "",
-  });
+interface UserData {
+  firstName: string;
+  lastName: string;
+  photo: string;
+  jobTitle: string;
+  userBio: string;
+}
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      if (session?.user?.email) {
-        const fetchedUser = await getUserByEmail(session.user.email);
-        setUser({
-          firstName: fetchedUser?.firstName || "John",
-          lastName: fetchedUser?.lastName || "Doe",
-          photo: fetchedUser?.photo || "/images/user/user-01.png",
-          jobTitle: fetchedUser?.jobTitle || "Researcher",
-          userBio: fetchedUser?.userBio || "",
-        });
-      }
-    };
-    fetchUser();
-  }, [session?.user?.email]);
-
-  return <UserContext.Provider value={user}>{children}</UserContext.Provider>;
+const defaultUserData: UserData = {
+  firstName: "John",
+  lastName: "Doe",
+  photo: "/images/user/user-01.png",
+  jobTitle: "Researcher",
+  userBio: "Drug Researcher specializing in protein binding analysis",
 };
 
-export const useUser = () => useContext(UserContext);
+const UserContext = createContext<UserData>(defaultUserData);
+
+export const useUser = () => {
+  const context = useContext(UserContext);
+  if (!context) {
+    throw new Error("useUser must be used within a UserProvider");
+  }
+  return context;
+};
+
+export const UserProvider = ({ children }: { children: ReactNode }) => {
+  const [userData] = useState<UserData>(defaultUserData);
+
+  return (
+    <UserContext.Provider value={userData}>
+      {children}
+    </UserContext.Provider>
+  );
+};

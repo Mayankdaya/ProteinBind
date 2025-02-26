@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-start-rgb));
+}
+
+.molecule-svg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.molecule-svg svg {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.molecule-container {
+  background: white;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.molecule-container canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+.molecule-viewer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.molecule-viewer canvas {
+  max-width: 100%;
+  height: auto !important;
+}
+
+.molecule-viewer img {
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+.molecule-viewer img[src] {
+  opacity: 1;
+}
+
+.molecule-viewer-container {
+  position: relative;
+  background: white;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.molecule-viewer-container canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.molecule-viewer-wrapper {
+  position: relative;
+  background: white;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+}
+
+.molecule-viewer-wrapper canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+}

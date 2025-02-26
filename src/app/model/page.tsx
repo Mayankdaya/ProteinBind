@@ -1,260 +1,296 @@
 "use client";
-import Breadcrumb from "@/components/ComponentHeader/ComponentHeader";
-import DefaultLayout from "@/components/Layouts/DefaultLayout";
-import MoleculeStructure from "../../components/MoleculeStructure/index";
 import React, { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
-import {
-  createMoleculeGenerationHistory,
-  getMoleculeGenerationHistoryByUser,
-} from "@/lib/actions/molecule-generation.action";
-import { getUserByEmail } from "@/lib/actions/user.actions";
+import { useUser } from "@clerk/nextjs";
+import Breadcrumb from "@/components/ComponentHeader/ComponentHeader";
+import MoleculeStructure from "@/components/MoleculeStructure";
+import { createMoleculeGenerationHistory, getMoleculeGenerationHistoryByUser } from "@/lib/actions/molecule-generation.action";
+import { getUserByEmail } from "@/lib/actions/user.action";
+import DefaultLayout from "@/components/Layouts/DefaultLayout";
+import MoleculeViewer from '@/components/MoleculeViewer';
 
-const ModalLayout = () => {
-  const { data: session } = useSession();
-  const [smiles, setSmiles] = useState(
-    "CCN(CC)C(=O)[C@@]1(C)Nc2c(ccc3ccccc23)C[C@H]1N(C)C",
-  );
-  const [numMolecules, setNumMolecules] = useState("10");
-  const [minSimilarity, setMinSimilarity] = useState("0.3");
-  const [particles, setParticles] = useState("30");
-  const [iterations, setIterations] = useState("10");
-  const [molecules, setMolecules] = useState([]);
-  const [loading, setLoading] = useState(false);
+interface Molecule {
+  structure?: string;
+  smiles?: string;
+  score?: number;
+}
+
+export default function Page() {
+  const { user } = useUser();
   const [history, setHistory] = useState([]);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState(null);
+  const [smiles, setSmiles] = useState(
+    "[H][C@@]12Cc3c[nH]c4cccc(C1=C[C@H](NC(=O)N(CC)CC)CN2C)c34"
+  );
+  const [numMolecules, setNumMolecules] = useState(30);
+  const [algorithm, setAlgorithm] = useState("CMA-ES");
+  const [propertyName, setPropertyName] = useState("QED");
+  const [minimize, setMinimize] = useState(false);
+  const [minSimilarity, setMinSimilarity] = useState(0.3);
+  const [particles, setParticles] = useState(30);
+  const [iterations, setIterations] = useState(10);
+  const [molecules, setMolecules] = useState<Molecule[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const fetchUserData = async () => {
-      if (session?.user?.email) {
+      if (user?.emailAddresses?.[0]?.emailAddress) {
         try {
-          const user = await getUserByEmail(session.user.email);
-          setUserId(user._id);
-          const historyFromServer = await getMoleculeGenerationHistoryByUser(
-            user._id,
-          );
-          setHistory(historyFromServer);
+          const userInfo = await getUserByEmail(user.emailAddresses[0].emailAddress);
+          if (userInfo?._id) {
+            setUserId(userInfo._id);
+          }
         } catch (error) {
-          console.error("Error fetching user or history:", error);
+          console.error("Error fetching user data:", error);
         }
       }
     };
-
     fetchUserData();
-  }, [session?.user?.email]);
+  }, [user]);
 
-  const handleSubmit = async (e: any) => {
-    e.preventDefault();
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (userId) {
+        const userHistory = await getMoleculeGenerationHistoryByUser(userId);
+        setHistory(userHistory);
+      }
+    };
+    fetchHistory();
+  }, [userId]);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setLoading(true);
-
-    const API_KEY =
-      "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";
-
-    const invokeUrl =
-      "https://health.api.nvidia.com/v1/biology/nvidia/molmim/generate";
+    setError("");
+    setMolecules([]);
 
     const payload = {
-      algorithm: "CMA-ES",
-      num_molecules: parseInt(numMolecules),
-      property_name: "QED",
-      minimize: false,
-      min_similarity: parseFloat(minSimilarity),
-      particles: parseInt(particles),
-      iterations: parseInt(iterations),
-      smi: smiles,
+      algorithm,
+      num_molecules: numMolecules,
+      property_name: propertyName,
+      minimize,
+      min_similarity: minSimilarity,
+      particles,
+      iterations,
+      smi: smiles
     };
 
     try {
-      const response = await fetch(invokeUrl, {
+      const response = await fetch('/api/nvidia', {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${API_KEY}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
+        headers: { 
+          "Content-Type": "application/json"
         },
         body: JSON.stringify(payload),
       });
 
       const data = await response.json();
-      const generatedMolecules = JSON.parse(data.molecules).map((mol: any) => ({
-        structure: mol.sample,
-        score: mol.score,
-      }));
 
-      setMolecules(generatedMolecules);
-
-      if (userId) {
-        await createMoleculeGenerationHistory(
-          {
-            smiles,
-            numMolecules: parseInt(numMolecules),
-            minSimilarity: parseFloat(minSimilarity),
-            particles: parseInt(particles),
-            iterations: parseInt(iterations),
-            generatedMolecules,
-          },
-          userId,
-        );
-
-        const updatedHistory = await getMoleculeGenerationHistoryByUser(userId);
-        setHistory(updatedHistory);
-      } else {
-        console.error("User ID is not available.");
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to generate molecules');
       }
 
-      console.log(generatedMolecules);
-    } catch (error) {
-      console.error("Error fetching data:", error);
+      if (!Array.isArray(data.molecules)) {
+        throw new Error('Invalid response format from server');
+      }
+
+      const formattedMolecules = data.molecules.map((mol: any) => ({
+        structure: mol.smiles || mol.structure,
+        score: mol.score || 0
+      }));
+
+      setMolecules(formattedMolecules);
+
+      if (userId) {
+        try {
+          await createMoleculeGenerationHistory({
+            userId,
+            inputSmiles: smiles,
+            parameters: payload,
+            results: formattedMolecules,
+            timestamp: new Date(),
+          });
+        } catch (historyError) {
+          console.error("Failed to save to history:", historyError);
+        }
+      }
+    } catch (error: any) {
+      console.error("Error:", error);
+      setError(error.message || "An unexpected error occurred");
+      setMolecules([]);
     } finally {
       setLoading(false);
     }
   };
 
+  const moleculesContent = Array.isArray(molecules) && molecules.length > 0 ? (
+    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {molecules.map((molecule: Molecule, index: number) => (
+        <div key={index} className="rounded-lg border p-4 dark:border-strokedark bg-white">
+          <div className="w-full aspect-square flex items-center justify-center">
+            <MoleculeStructure
+              id={`mol-${index}`}
+              structure={molecule.smiles || molecule.structure || ''}
+              width={280}
+              height={280}
+              scores={molecule.score}
+            />
+          </div>
+          <div className="mt-2 space-y-1">
+            <p className="text-sm font-medium">Score: {molecule.score?.toFixed(4)}</p>
+            <p className="text-xs break-all text-gray-500">{molecule.smiles || molecule.structure}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <DefaultLayout>
-      <Breadcrumb pageName="Generate Molecules" />
-
-      <div className="grid grid-cols-1 gap-9 sm:grid-cols-3">
-        <div className="flex flex-col gap-9 sm:col-span-2">
-          <div className="rounded-lg border border-stroke bg-white shadow-default dark:border-[#121212] dark:bg-[#181818]">
-            <div className="border-b border-stroke px-6.5 py-4 dark:border-strokedark">
-              <h3 className="font-medium text-black dark:text-white">
-                SMILES to Molecule Generator
-              </h3>
-            </div>
-            <form onSubmit={handleSubmit}>
-              <div className="p-6.5">
-                <div className="mb-4.5 flex flex-col gap-6 xl:flex-row">
-                  <div className="w-full xl:w-1/2">
-                    <label className="mb-3 block text-sm font-medium text-black dark:text-white">
-                      SMILES String
-                    </label>
-                    <input
-                      type="text"
-                      value={smiles}
-                      onChange={(e) => setSmiles(e.target.value)}
-                      placeholder="Enter SMILES string"
-                      className="w-full rounded-lg border-[1.5px] bg-transparent px-5 py-3 text-black outline-none transition focus:border-primary active:border-primary dark:border-gray-2 dark:bg-[#181818] dark:text-white dark:focus:border-primary"
-                    />
-                  </div>
-
-                  <div className="w-full xl:w-1/2">
-                    <label className="mb-3 block text-sm font-medium text-black dark:text-white">
-                      Number of Molecules
-                    </label>
-                    <input
-                      type="text"
-                      value={numMolecules}
-                      onChange={(e) => setNumMolecules(e.target.value)}
-                      placeholder="Enter number of molecules"
-                      className="w-full rounded-lg border-[1.5px] bg-transparent px-5 py-3 text-black outline-none transition focus:border-primary active:border-primary dark:border-gray-2 dark:bg-[#181818] dark:text-white dark:focus:border-primary"
-                    />
-                  </div>
+      <div className="mx-auto max-w-270">
+        <Breadcrumb pageName="Molecule Generator" />
+        <div className="rounded-sm border border-stroke bg-white px-5 pt-6 pb-2.5 shadow-default dark:border-strokedark dark:bg-boxdark sm:px-7.5 xl:pb-1">
+          <div className="max-w-full overflow-x-auto">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <label className="mb-2.5 block text-black dark:text-white">
+                    SMILES String
+                  </label>
+                  <input
+                    type="text"
+                    value={smiles}
+                    onChange={(e) => setSmiles(e.target.value)}
+                    className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
+                    required
+                  />
                 </div>
 
-                <div className="mb-4.5">
-                  <label className="mb-3 block text-sm font-medium text-black dark:text-white">
+                <div>
+                  <label className="mb-2.5 block text-black dark:text-white">
+                    Algorithm
+                  </label>
+                  <select
+                    value={algorithm}
+                    onChange={(e) => setAlgorithm(e.target.value)}
+                    className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
+                  >
+                    <option value="CMA-ES">CMA-ES</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2.5 block text-black dark:text-white">
+                    Property Name
+                  </label>
+                  <select
+                    value={propertyName}
+                    onChange={(e) => setPropertyName(e.target.value)}
+                    className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
+                  >
+                    <option value="QED">QED</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2.5 block text-black dark:text-white">
+                    Number of Molecules
+                  </label>
+                  <input
+                    type="number"
+                    value={numMolecules.toString()}
+                    onChange={(e) => setNumMolecules(Number(e.target.value) || 1)}
+                    min="1"
+                    className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2.5 block text-black dark:text-white">
                     Minimum Similarity
                   </label>
                   <input
-                    type="text"
-                    value={minSimilarity}
-                    onChange={(e) => setMinSimilarity(e.target.value)}
-                    placeholder="Enter minimum similarity"
-                    className="w-full rounded-lg border-[1.5px] bg-transparent px-5 py-3 text-black outline-none transition focus:border-primary active:border-primary dark:border-gray-2 dark:bg-[#181818] dark:text-white dark:focus:border-primary"
+                    type="number"
+                    value={minSimilarity.toString()}
+                    onChange={(e) => setMinSimilarity(Number(e.target.value) || 0)}
+                    step="0.1"
+                    min="0"
+                    max="1"
+                    className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
+                    required
                   />
                 </div>
 
-                <div className="mb-4.5">
-                  <label className="mb-3 block text-sm font-medium text-black dark:text-white">
+                <div>
+                  <label className="mb-2.5 block text-black dark:text-white">
                     Particles
                   </label>
                   <input
-                    type="text"
-                    value={particles}
-                    onChange={(e) => setParticles(e.target.value)}
-                    placeholder="Enter number of particles"
-                    className="w-full rounded-lg border-[1.5px] bg-transparent px-5 py-3 text-black outline-none transition focus:border-primary active:border-primary dark:border-gray-2 dark:bg-[#181818] dark:text-white dark:focus:border-primary"
+                    type="number"
+                    value={particles.toString()}
+                    onChange={(e) => setParticles(Number(e.target.value) || 1)}
+                    min="1"
+                    className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
+                    required
                   />
                 </div>
 
-                <div className="mb-4.5">
-                  <label className="mb-3 block text-sm font-medium text-black dark:text-white">
+                <div>
+                  <label className="mb-2.5 block text-black dark:text-white">
                     Iterations
                   </label>
                   <input
-                    type="text"
-                    value={iterations}
-                    onChange={(e) => setIterations(e.target.value)}
-                    placeholder="Enter number of iterations"
-                    className="w-full rounded-lg border-[1.5px] bg-transparent px-5 py-3 text-black outline-none transition focus:border-primary active:border-primary dark:border-gray-2 dark:bg-[#181818] dark:text-white dark:focus:border-primary"
+                    type="number"
+                    value={iterations.toString()}
+                    onChange={(e) => setIterations(Number(e.target.value) || 1)}
+                    min="1"
+                    className="w-full rounded border-[1.5px] border-stroke bg-transparent py-3 px-5 font-medium outline-none transition focus:border-primary active:border-primary disabled:cursor-default disabled:bg-whiter dark:border-form-strokedark dark:bg-form-input dark:focus:border-primary"
+                    required
                   />
                 </div>
 
+                <div className="flex items-center">
+                  <label className="flex cursor-pointer select-none items-center">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={minimize}
+                        onChange={(e) => setMinimize(e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div className={`box mr-4 flex h-5 w-5 items-center justify-center rounded border ${minimize ? 'bg-primary border-primary' : 'border-stroke dark:border-strokedark'}`}>
+                        <span className={`opacity-0 ${minimize ? '!opacity-100' : ''}`}>
+                          ✓
+                        </span>
+                      </div>
+                    </div>
+                    Minimize Property
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-4.5">
                 <button
                   type="submit"
-                  className="flex w-full justify-center rounded-lg bg-primary p-3 font-medium text-gray hover:bg-opacity-90"
                   disabled={loading}
+                  className="flex justify-center rounded bg-primary py-2 px-6 font-medium text-gray hover:bg-opacity-90 disabled:opacity-50"
                 >
                   {loading ? "Generating..." : "Generate Molecules"}
                 </button>
               </div>
             </form>
-          </div>
-        </div>
 
-        <div className="flex flex-col gap-9">
-          <div className="rounded-lg border border-stroke bg-white p-3 shadow-default dark:border-[#121212] dark:bg-[#181818]">
-            <h3 className="font-medium text-black dark:text-white">
-              Molecule Generation History
-            </h3>
-            <div className="mt-4 max-h-96 overflow-y-auto">
-              {history.map((entry: any, index) => (
-                <div key={index} className="border-b border-stroke py-3">
-                  <p className="text-sm text-black dark:text-white">
-                    <span className="font-bold">SMILES:</span> {entry.smiles}
-                  </p>
-                  <p className="text-sm text-black dark:text-white">
-                    <span className="font-bold">Molecules:</span>{" "}
-                    {entry.numMolecules}
-                  </p>
-                  <p className="text-sm text-black dark:text-white">
-                    <span className="font-bold">Date:</span>{" "}
-                    {new Date(entry.createdAt).toLocaleDateString()}
-                  </p>
-                  <div className="mt-3">
-                    <button
-                      className="text-primary hover:underline"
-                      onClick={() => setMolecules(entry.generatedMolecules)}
-                    >
-                      View Molecules
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {error && (
+              <div className="mt-4 rounded-lg bg-danger-light p-4 text-danger">
+                {error}
+              </div>
+            )}
+
+            {moleculesContent}
           </div>
         </div>
       </div>
-
-      {molecules.length > 0 && (
-        <div className="mt-8 rounded-lg bg-white p-2">
-          <div className="mt-8 flex flex-col  gap-2">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {molecules.map((mol: any, index) => (
-                <MoleculeStructure
-                  key={index}
-                  id={`mol-${index + 1}`}
-                  structure={mol.structure}
-                  scores={mol.score}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </DefaultLayout>
   );
-};
-
-export default ModalLayout;
+}

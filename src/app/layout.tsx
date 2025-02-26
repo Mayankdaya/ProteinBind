@@ -1,46 +1,35 @@
-"use client";
 import "jsvectormap/dist/jsvectormap.css";
 import "flatpickr/dist/flatpickr.min.css";
 import "@/css/style.css";
-import React, { useEffect, useState } from "react";
-import Loader from "@/components/common/Loader";
+import { ClerkProvider } from "@clerk/nextjs";
+import { Inter } from 'next/font/google';
+import { UserProvider } from "./context/UserContext";
+import { RDKitProvider } from '@/contexts/RDKitContext';
 
-import * as Ably from "ably";
-import { AblyProvider, ChannelProvider } from "ably/react";
-import { SessionProvider } from "next-auth/react";
-import { UserProvider } from "@/app/context/UserContext";
+const inter = Inter({ subsets: ['latin'] })
+
+export const metadata = {
+  title: 'ProteinBind',
+  description: 'Your protein binding analysis platform',
+}
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [loading, setLoading] = useState<boolean>(true);
-
-  useEffect(() => {
-    setTimeout(() => setLoading(false), 1000);
-  }, []);
-
-  const client = new Ably.Realtime({
-    key: "xiEQTw.SBJKWA:Kv7RDv6PngxN8y8ttHsOWHDQqchaEYtU9rgKefhsl7o",
-  });
+}) {
   return (
     <html lang="en">
-      {/* <script src="https://unpkg.com/@rdkit/rdkit/dist/RDKit_minimal.js"></script> */}
-      <script src="https://unpkg.com/@rdkit/rdkit/dist/RDKit_minimal.js"></script>
-      <body suppressHydrationWarning={true}>
-        <SessionProvider>
+      <body className={inter.className}>
+        <ClerkProvider>
           <UserProvider>
-            <AblyProvider client={client}>
-              <ChannelProvider channelName="chat-demo1">
-                <div className="font-poppins dark:bg-boxdark-2 dark:text-bodydark ">
-                  {loading ? <Loader /> : children}
-                </div>
-              </ChannelProvider>
-            </AblyProvider>
+            <RDKitProvider>
+              <div className="font-poppins dark:bg-boxdark-2 dark:text-bodydark min-h-screen">
+                {children}
+              </div>
+            </RDKitProvider>
           </UserProvider>
-        </SessionProvider>
+        </ClerkProvider>
       </body>
     </html>
   );
