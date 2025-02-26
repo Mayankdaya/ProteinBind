@@ -373,23 +373,6 @@ export default function Page() {
               </div>
             )}
 
-            {/* Debug information (for development only) */}
-            {responseDebug && (
-              <div className="mt-4 p-4 rounded-lg border border-gray-200 bg-gray-50">
-                <details>
-                  <summary className="cursor-pointer font-medium">Debug Information (click to expand)</summary>
-                  <pre className="mt-2 text-xs overflow-auto">{responseDebug}</pre>
-                </details>
-              </div>
-            )}
-
-            {/* Input molecule preview */}
-            <div className="mt-4 p-4 border rounded-lg">
-              <h3 className="text-lg font-medium mb-2">Input Molecule Preview</h3>
-              {renderInputPreview()}
-              <p className="mt-2 text-xs break-all text-gray-500">{smiles}</p>
-            </div>
-
             {/* Results display */}
             {Array.isArray(molecules) && molecules.length > 0 ? (
               <div className="mt-4">

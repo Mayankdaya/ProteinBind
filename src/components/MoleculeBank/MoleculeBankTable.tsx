@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import MoleculeViewer from "@/components/MoleculeViewer";
+import MoleculeStructure from "@/components/MoleculeStructure";
 
 interface GeneratedMolecule {
   structure: string;
@@ -198,10 +198,10 @@ const TableOne = () => {
 
             <div className="flex items-center gap-3 p-2.5 xl:p-5">
               <div className="flex-shrink-0">
-                <MoleculeViewer
-                  smiles={molecule.smilesStructure}
+                <MoleculeStructure
+                  structure={molecule.smilesStructure}
                   width={200}
-                  height={150}
+                  height={200}
                 />
               </div>
             </div>

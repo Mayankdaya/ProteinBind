@@ -38,6 +38,11 @@ export const initRDKit = async () => {
         debugLog(`WASM Path: ${wasmPath}`);
         debugLog(`JS Path: ${jsPath}`);
         
+        // Add timeout for WASM loading
+        const timeout = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('RDKit initialization timed out')), 30000);
+        });
+        
         // Pre-check WASM file availability
         fetch(wasmPath)
           .then(response => {
