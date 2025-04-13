@@ -3,7 +3,7 @@ import { Metadata } from "next";
 import DefaultLayout from "@/components/Layouts/DefaultLayout";
 
 export const metadata: Metadata = {
-  title: "ProteinBind Dashboard",
+  title: "",
   description: "Your protein binding analysis platform",
 };
 

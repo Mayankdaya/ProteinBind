@@ -5,12 +5,12 @@ import { initRDKit } from '@/lib/rdkit';
 interface MoleculeStructureProps {
   smiles?: string;
   structure?: string;
-  id?: string;
   width?: number;
   height?: number;
   options?: {
     width?: number;
     height?: number;
+    is3D?: boolean;
   };
 }
 
@@ -19,79 +19,100 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
   structure,
   width = 300,
   height = 300,
-  options = { width: 300, height: 300 } 
+  options = { width: 300, height: 300, is3D: false } 
 }) => {
-  const moleculeString = structure || smiles;
-  const finalWidth = width || options.width;
-  const finalHeight = height || options.height;
-  const containerRef = useRef<HTMLDivElement>(null);
+  const moleculeString = structure || smiles || '';
+  const finalWidth = width || options?.width || 300;
+  const finalHeight = height || options?.height || 300;
+  const [svg, setSvg] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initializationProgress, setInitializationProgress] = useState<string>('Starting');
+  const rdkitRef = useRef<any>(null);
+  const molRef = useRef<any>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    const drawMolecule = async () => {
-      if (!moleculeString || !containerRef.current) return;
+    let mounted = true;
+
+    const renderMolecule = async () => {
+      if (!moleculeString || moleculeString.trim().length === 0) {
+        setError('No molecule structure provided');
+        setLoading(false);
+        return;
+      }
 
       try {
-        setInitializationProgress('Initializing RDKit...');
-        console.log('Initializing RDKit...');
-        
-        const initializationTimeout = new Promise((_, reject) => {
-          timeoutId = setTimeout(() => {
-            reject(new Error('RDKit initialization timed out. Please check your network connection and try again.'));
-          }, 15000);
-        });
+        setLoading(true);
+        const RDKit = await initRDKit();
+        if (!mounted) return;
 
-        setInitializationProgress('Loading WASM files...');
-        const rdkit = await Promise.race([
-          initRDKit(),
-          initializationTimeout
-        ]);
-
-        clearTimeout(timeoutId);
-
-        if (!rdkit) {
-          throw new Error('RDKit initialization failed - WASM files not found. Please check if RDKit_minimal.js and RDKit_minimal.wasm are present in the public directory.');
+        rdkitRef.current = RDKit;
+        const mol = RDKit.get_mol(moleculeString);
+        if (!mol) {
+          throw new Error('Invalid molecule structure');
         }
 
-        setInitializationProgress('Rendering molecule...');
-        console.log('RDKit initialized, rendering molecule...');
-        containerRef.current.innerHTML = '';
-        const mol = rdkit.get_mol(moleculeString);
-        if (mol && mol.is_valid()) {
-          const svg = mol.get_svg(finalWidth, finalHeight);
-          containerRef.current.innerHTML = svg;
-          mol.delete();
-          setError(null);
+        molRef.current = mol;
+
+        if (options.is3D && canvasRef.current) {
+          // 3D rendering
+          mol.add_hs();
+          const result = mol.embed_molecule();
+          if (result === -1) {
+            throw new Error('Failed to generate 3D coordinates');
+          }
+          mol.compute_2d_coords();
+          mol.draw_to_canvas_with_highlights(canvasRef.current, JSON.stringify({
+            width: finalWidth,
+            height: finalHeight,
+            legend: '',
+            bondLineWidth: 1,
+            rotate: 30,
+            clearBackground: true
+          }));
         } else {
-          throw new Error(`Invalid molecule structure: ${moleculeString}. Please check if the SMILES/structure string is correct.`);
+          // 2D rendering
+          const svgString = mol.get_svg(finalWidth, finalHeight);
+          if (mounted) {
+            setSvg(svgString);
+          }
+        }
+
+        if (mounted) {
+          setError(null);
+          setLoading(false);
         }
       } catch (err) {
-        console.error('Error rendering molecule:', err);
-        setError(err instanceof Error ? err.message : 'An unexpected error occurred while rendering the molecule');
+        if (mounted) {
+          console.error('Error rendering molecule:', err);
+          setError(err instanceof Error ? err.message : 'Failed to render molecule');
+          setLoading(false);
+        }
       } finally {
-        setLoading(false);
-        setInitializationProgress('Complete');
+        if (molRef.current && mounted) {
+          molRef.current.delete();
+          molRef.current = null;
+        }
       }
     };
 
-    drawMolecule();
+    renderMolecule();
 
     return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+      mounted = false;
+      if (molRef.current) {
+        molRef.current.delete();
+        molRef.current = null;
       }
     };
-  }, [moleculeString, finalWidth, finalHeight]);
+  }, [moleculeString, finalWidth, finalHeight, options.is3D]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center w-full h-full min-h-[200px] bg-gray-50">
+      <div className="flex items-center justify-center w-full h-full min-h-[200px] bg-gray-50" data-testid="molecule-structure">
         <div className="flex flex-col items-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mb-2"></div>
-          <div className="text-sm text-gray-600">{initializationProgress}</div>
+          <div className="text-sm text-gray-600">Loading molecule...</div>
         </div>
       </div>
     );
@@ -99,29 +120,38 @@ const MoleculeStructure: React.FC<MoleculeStructureProps> = ({
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center w-full h-full min-h-[200px] bg-gray-50 p-4">
+      <div className="flex flex-col items-center justify-center w-full h-full min-h-[200px] bg-gray-50 p-4" data-testid="molecule-structure">
         <div className="text-red-500 font-medium mb-2">Error</div>
         <div className="text-red-500 text-sm text-center">{error}</div>
-        <button 
-          onClick={() => window.location.reload()} 
-          className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-        >
-          Retry
-        </button>
       </div>
     );
   }
 
-  return (
-    <div 
-      ref={containerRef}
+  return options.is3D ? (
+    <canvas
+      ref={canvasRef}
       className="flex items-center justify-center bg-white rounded"
+      data-testid="molecule-structure"
+      width={finalWidth}
+      height={finalHeight}
       style={{ 
         width: finalWidth, 
         height: finalHeight,
         minHeight: '200px',
         margin: 'auto'
       }}
+    />
+  ) : (
+    <div 
+      className="flex items-center justify-center bg-white rounded"
+      data-testid="molecule-structure"
+      style={{ 
+        width: finalWidth, 
+        height: finalHeight,
+        minHeight: '200px',
+        margin: 'auto'
+      }}
+      dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
 };

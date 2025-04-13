@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import MoleculeViewer from "@/components/MoleculeViewer";
+import MoleculeStructure from "@/components/MoleculeStructure";
 
 interface GeneratedMolecule {
   structure: string;
@@ -82,40 +82,65 @@ const TableOne = () => {
     setError("");
 
     const payload = {
-      smiles: "C124CN3C1.S3(=O)(=O)CC.C4C#N.[*{20-20}]",
-      num_molecules: 30,
-      temperature: 1,
-      noise: 0,
-      step_size: 1,
-      scoring: "QED"
+      smi: "[H][C@@]12Cc3c[nH]c4cccc(C1=C[C@H](NC(=O)N(CC)CC)CN2C)c34",
+      numMolecules: 30,
+      minSimilarity: 0.3,
+      particles: 30,
+      iterations: 10
     };
 
-    try {
-      const response = await fetch("https://health.api.nvidia.com/v1/biology/nvidia/genmol/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.NVIDIA_API_KEY || ''}`
-        },
-        body: JSON.stringify(payload)
-      });
+    let retryCount = 0;
+    const maxRetries = 3;
+    const retryDelay = 1000; // 1 second
 
-      if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
+    while (retryCount < maxRetries) {
+      try {
+        const response = await fetch("/api/nvidia/molmim", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          const errorMessage = data.error || `API request failed with status ${response.status}`;
+          if (response.status === 429 || response.status === 503) {
+            const retryAfter = response.headers.get('Retry-After');
+            const delay = retryAfter ? parseInt(retryAfter) * 1000 : retryDelay * Math.pow(2, retryCount);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            retryCount++;
+            continue;
+          }
+          throw new Error(errorMessage);
+        }
+
+        if (!data.molecules || !Array.isArray(data.molecules)) {
+          throw new Error("Invalid response format from API");
+        }
+
+        const validMolecules = data.molecules.filter((mol: any) => mol.structure && typeof mol.score === 'number');
+        
+        if (validMolecules.length === 0) {
+          throw new Error("No valid molecules were generated");
+        }
+
+        setGeneratedMolecules(validMolecules);
+        break;
+      } catch (err: any) {
+        if (retryCount === maxRetries - 1 || !(err.message?.includes('429') || err.message?.includes('503'))) {
+          const errorMessage = err.message || "Failed to generate molecules";
+          setError(`${errorMessage}${retryCount > 0 ? ` (after ${retryCount + 1} attempts)` : ''}`);
+          console.error("Molecule generation error:", err);
+          break;
+        }
+        retryCount++;
+        await new Promise(resolve => setTimeout(resolve, retryDelay * Math.pow(2, retryCount - 1)));
       }
-
-      const data = await response.json();
-      const molecules = data.molecules.map((mol: any) => ({
-        structure: mol.smiles,
-        score: mol.score
-      }));
-
-      setGeneratedMolecules(molecules);
-    } catch (err: any) {
-      setError(err.message || "Failed to generate molecules");
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -198,10 +223,10 @@ const TableOne = () => {
 
             <div className="flex items-center gap-3 p-2.5 xl:p-5">
               <div className="flex-shrink-0">
-                <MoleculeViewer
-                  smiles={molecule.smilesStructure}
+                <MoleculeStructure
+                  structure={molecule.smilesStructure}
                   width={200}
-                  height={150}
+                  height={200}
                 />
               </div>
             </div>

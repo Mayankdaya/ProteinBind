@@ -41,7 +41,7 @@ class MoleculeStructure extends Component {
     className: "",
     width: 300,
     height: 250,
-    svgMode: false,
+    svgMode: true,
     extraDetails: {},
     drawingDelay: undefined,
     scores: 0,
@@ -185,23 +185,24 @@ class MoleculeStructure extends Component {
     if (this.state.rdKitError) {
       return (
         <div className="p-4 text-red-500 bg-red-100 rounded-lg">
-          Failed to initialize molecule renderer. Please try refreshing the page.
+          <p className="font-medium">Failed to initialize molecule renderer</p>
+          <p className="text-sm mt-1">Reason: RDKit WASM module failed to load. Check if RDKit files are present in the public directory.</p>
         </div>
       );
     }
     if (!this.state.rdKitLoaded) {
       return (
         <div className="p-4 text-blue-500 bg-blue-100 rounded-lg">
-          Initializing molecule renderer...
+          <div className="flex items-center justify-center space-x-3">
+            <svg className="animate-spin h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="font-medium">Loading molecule renderer...</span>
+          </div>
+          <p className="text-sm mt-2 text-center">Please wait while RDKit initializes</p>
         </div>
       );
-    }
-    console.log("props score number:", this.props.scores);
-    if (this.state.rdKitError) {
-      return "Error loading renderer.";
-    }
-    if (!this.state.rdKitLoaded) {
-      return "Loading renderer...";
     }
 
     const mol = this.RDKit.get_mol(this.props.structure || "invalid");
@@ -210,9 +211,11 @@ class MoleculeStructure extends Component {
 
     if (!isValidMol) {
       return (
-        <span title={`Cannot render structure: ${this.props.structure}`}>
-          Render Error.
-        </span>
+        <div className="p-4 text-red-500 bg-red-100 rounded-lg">
+          <p className="font-medium">Invalid Molecule Structure</p>
+          <p className="text-sm mt-1">The provided SMILES string could not be parsed: {this.props.structure}</p>
+          <p className="text-xs mt-2">Please check if the molecular structure is correctly formatted.</p>
+        </div>
       );
     } else if (this.props.svgMode) {
       return (
@@ -262,18 +265,27 @@ class MoleculeStructure extends Component {
           this.draw();
         } catch (err) {
           console.error('Error drawing molecule:', err);
-          this.setState({ rdKitError: true });
+          this.setState({ 
+            rdKitError: true,
+            errorMessage: err.message || 'Error drawing molecule'
+          });
         }
       })
       .catch((err) => {
         console.error('Error initializing RDKit:', err);
         if (retryCount < maxRetries) {
           console.log(`Retrying RDKit initialization (${retryCount + 1}/${maxRetries})...`);
+          this.setState({
+            loadingMessage: `Retrying initialization (${retryCount + 1}/${maxRetries})...`
+          });
           setTimeout(() => {
             this.initializeRDKit(retryCount + 1);
           }, retryDelay * (retryCount + 1));
         } else {
-          this.setState({ rdKitError: true });
+          this.setState({ 
+            rdKitError: true,
+            errorMessage: err.message || 'Failed to initialize RDKit after multiple attempts'
+          });
         }
       });
   }

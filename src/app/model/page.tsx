@@ -14,10 +14,18 @@ interface Molecule {
   score?: number;
 }
 
+interface HistoryItem {
+  userId: string;
+  inputSmiles: string;
+  parameters: any;
+  results: Molecule[];
+  timestamp: Date;
+}
+
 export default function Page() {
   const { user } = useUser();
-  const [history, setHistory] = useState([]);
-  const [userId, setUserId] = useState(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
   const [smiles, setSmiles] = useState(
     "[H][C@@]12Cc3c[nH]c4cccc(C1=C[C@H](NC(=O)N(CC)CC)CN2C)c34"
   );
@@ -39,7 +47,7 @@ export default function Page() {
         try {
           const userInfo = await getUserByEmail(user.emailAddresses[0].emailAddress);
           if (userInfo?._id) {
-            setUserId(userInfo._id);
+            setUserId(userInfo._id.toString());
           }
         } catch (error) {
           console.error("Error fetching user data:", error);
@@ -53,7 +61,7 @@ export default function Page() {
     const fetchHistory = async () => {
       if (userId) {
         const userHistory = await getMoleculeGenerationHistoryByUser(userId);
-        setHistory(userHistory);
+        setHistory(userHistory || []);
       }
     };
     fetchHistory();
@@ -67,65 +75,92 @@ export default function Page() {
     setResponseDebug("");
 
     const payload = {
-      algorithm,
-      num_molecules: numMolecules,
-      property_name: propertyName,
-      minimize,
-      min_similarity: minSimilarity,
-      particles,
-      iterations,
-      smi: smiles
+      algorithm: "CMA-ES",
+      num_molecules: Number(numMolecules),
+      property_name: "QED",
+      minimize: Boolean(minimize),
+      min_similarity: Number(minSimilarity),
+      particles: Number(particles),
+      iterations: Number(iterations),
+      smiles: smiles.trim()
     };
 
     try {
-      // Log the payload for debugging
       console.log("Sending payload:", payload);
       
-      const response = await fetch('/api/nvidia', {
+      const response = await fetch('/api/nvidia/molmim', {
         method: "POST",
         headers: { 
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          smi: smiles.trim(),
+          algorithm,
+          numMolecules,
+          propertyName,
+          minimize,
+          minSimilarity,
+          particles,
+          iterations
+        }),
       });
 
-      // Store the raw response text for debugging
-      const responseText = await response.text();
       let data;
-      
       try {
-        // Try to parse the response as JSON
-        data = JSON.parse(responseText);
-        setResponseDebug(`Response status: ${response.status}, Response parsed successfully`);
+        data = await response.json();
       } catch (parseError) {
-        // If parsing fails, show the raw response
         console.error("Failed to parse response:", parseError);
-        setResponseDebug(`Response status: ${response.status}, Raw response: ${responseText.substring(0, 500)}...`);
-        throw new Error(`Failed to parse response: ${parseError.message}`);
+        throw new Error("Server returned an invalid response");
       }
 
       if (!response.ok) {
-        throw new Error(data.error || `Server error: ${response.status}`);
-      }
-
-      if (!data.molecules || !Array.isArray(data.molecules)) {
-        setResponseDebug(`Invalid response format. Response data: ${JSON.stringify(data).substring(0, 500)}...`);
-        throw new Error('Invalid response format: molecules array not found');
-      }
-
-      console.log("Received molecules:", data.molecules);
-
-      // Normalize the molecules data
-      const formattedMolecules = data.molecules.map((mol: any, index: number) => {
-        // For debugging
-        console.log(`Processing molecule ${index}:`, mol);
+        const errorMessage = data.details
+          ? `${data.error}\n${typeof data.details === 'string' ? data.details : JSON.stringify(data.details)}`
+          : data.error || `Server error: ${response.status}`;
+          
+        if (response.status === 429 && data.retryAfter) {
+          throw new Error(`Rate limit exceeded. Please try again in ${data.retryAfter} seconds.`);
+        } else if (response.status === 504) {
+          throw new Error("Request timed out. Please try again later.");
+        } else if (response.status === 502) {
+          throw new Error("Error communicating with NVIDIA API. Please try again later.");
+        }
         
-        return {
-          smiles: mol.smiles || mol.structure || '',
-          structure: mol.smiles || mol.structure || '',
-          score: typeof mol.score === 'number' ? mol.score : 0
-        };
-      });
+        throw new Error(errorMessage);
+      }
+
+      // Handle different response formats
+      let moleculesArray = [];
+      
+      if (data?.molecules && Array.isArray(data.molecules)) {
+        moleculesArray = data.molecules;
+      } else if (data?.raw_response) {
+        console.log("Using raw_response data");
+        // Try to extract molecules from raw_response
+        if (Array.isArray(data.raw_response)) {
+          moleculesArray = data.raw_response;
+        } else if (data.raw_response.molecules && Array.isArray(data.raw_response.molecules)) {
+          moleculesArray = data.raw_response.molecules;
+        }
+      }
+      
+      if (moleculesArray.length === 0) {
+        console.error("No molecules found in response:", data);
+        throw new Error('No valid molecules found in the response');
+      }
+
+      console.log("Received molecules:", moleculesArray);
+
+      // Map response to consistent format
+      const formattedMolecules = data.molecules.map((mol: any) => ({
+        smiles: mol.sample || mol.smiles || '',
+        structure: mol.sample || mol.smiles || '',
+        score: mol.score || null
+      }));
+
+      if (formattedMolecules.length === 0) {
+        throw new Error('No valid molecules were generated');
+      }
 
       console.log("Formatted molecules:", formattedMolecules);
       setMolecules(formattedMolecules);
@@ -152,7 +187,6 @@ export default function Page() {
     }
   };
 
-  // Function to check if a SMILES string is valid (basic check)
   const isValidSmiles = (smiles: string) => {
     return smiles && smiles.trim().length > 0;
   };
@@ -207,7 +241,7 @@ export default function Page() {
         </div>
         {molecule.score !== undefined && (
           <p className="text-center mt-2 text-sm font-medium">
-            Score: {molecule.score.toFixed(3)}
+            Score: {molecule.score?.toFixed(3)}
           </p>
         )}
       </div>
@@ -353,7 +387,6 @@ export default function Page() {
               </div>
             </form>
 
-            {/* Loading indicator */}
             {loading && (
               <div className="mt-4 p-4 rounded-lg border border-blue-200 bg-blue-50 text-blue-700">
                 <div className="flex items-center space-x-2">
@@ -366,47 +399,24 @@ export default function Page() {
               </div>
             )}
 
-            {/* Error display */}
             {error && (
               <div className="mt-4 rounded-lg bg-danger-light p-4 text-danger">
                 <strong>Error:</strong> {error}
               </div>
             )}
 
-            {/* Debug information (for development only) */}
-            {responseDebug && (
-              <div className="mt-4 p-4 rounded-lg border border-gray-200 bg-gray-50">
-                <details>
-                  <summary className="cursor-pointer font-medium">Debug Information (click to expand)</summary>
-                  <pre className="mt-2 text-xs overflow-auto">{responseDebug}</pre>
-                </details>
-              </div>
-            )}
-
-            {/* Input molecule preview */}
-            <div className="mt-4 p-4 border rounded-lg">
-              <h3 className="text-lg font-medium mb-2">Input Molecule Preview</h3>
-              {renderInputPreview()}
-              <p className="mt-2 text-xs break-all text-gray-500">{smiles}</p>
-            </div>
-
-            {/* Results display */}
             {Array.isArray(molecules) && molecules.length > 0 ? (
               <div className="mt-4">
-                <h3 className="text-lg font-medium mb-2">Generated Molecules ({molecules.length})</h3>
+                <h3 className="text-lg font-medium mb-2">Generated Molecules ({molecules.length} of {numMolecules} requested)</h3>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {molecules.map((molecule: Molecule, index: number) => (
                     <div key={index} className="rounded-lg border p-4 dark:border-strokedark bg-white">
                       <div className="w-full aspect-square flex items-center justify-center">
                         {molecule.smiles || molecule.structure ? (
                           <MoleculeStructure
-                            id={`mol-${index}`}
                             structure={molecule.smiles || molecule.structure || ''}
                             width={280}
                             height={280}
-                            scores={molecule.score}
-                            svgMode={true}
-                            drawingDelay={index * 100}
                           />
                         ) : (
                           <div className="p-4 text-center text-red-500">

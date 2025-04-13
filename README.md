@@ -28,6 +28,7 @@
 4. 🤸 [Quick Start](#quick-start)
 5. 🧬 [Protein Data Processing](#protein-data)
 6. 🚀 [More](#more)
+7. 🧪 [NVIDIA API Test Script](#nvidia-api-test-script)
 
 ## 🚨 Tutorial
 
@@ -127,6 +128,57 @@ Using molecular docking algorithms, the system predicts how small molecules (suc
 ## <a name="more">🚀 More</a>
 
 Stay tuned for more updates and features! Join our community, contribute to the repository, and follow along with our detailed tutorials.
+
+## <a name="nvidia-api-test-script">🧪 NVIDIA API Test Script</a>
+
+This script tests the NVIDIA Molecular Optimization API.
+
+### **Prerequisites**
+
+- curl
+- bash
+- Valid NVIDIA API key
+- A terminal/command prompt
+
+### **Testing Instructions**
+
+1. Set your API key in your environment:
+```bash
+# For Windows
+set API_KEY_REQUIRED_IF_EXECUTING_OUTSIDE_NGC=your_api_key
+
+# For Linux/Mac
+export API_KEY_REQUIRED_IF_EXECUTING_OUTSIDE_NGC=your_api_key
+```
+
+2. Run the test command:
+```bash
+curl -X POST "https://health.api.nvidia.com/v1/biology/nvidia/molmim/generate" \
+-H "Authorization: Bearer $API_KEY_REQUIRED_IF_EXECUTING_OUTSIDE_NGC" \
+-H "Accept: application/json" \
+-H "Content-Type: application/json" \
+-d '{
+  "algorithm": "CMA-ES",
+  "num_molecules": 30,
+  "property_name": "QED",
+  "minimize": false,
+  "min_similarity": 0.3,
+  "particles": 30,
+  "iterations": 10,
+  "smi": "[H][C@@]12Cc3c[nH]c4cccc(C1=C[C@H](NC(=O)N(CC)CC)CN2C)c34"
+}'
+```
+
+### **Expected Response**
+If successful, you should receive a JSON response containing:
+- Generated molecules
+- Optimization scores
+- Similarity metrics
+
+### **Troubleshooting**
+- If you get a 401 error, check your API key
+- If you get a timeout, try reducing the number of molecules
+- For connection issues, verify your internet connection
 
 ## 📞 **Contact & Community**
 

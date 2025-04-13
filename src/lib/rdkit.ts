@@ -1,18 +1,65 @@
 import initRDKitModule from "@rdkit/rdkit";
 
-// RDKit module will be initialized and its methods will be available through the instance
-// We don't need to import Chem and Draw directly as they'll be accessible via the RDKit instance
-
-// Add more comprehensive debugging
 let rdkitInstance: any = null;
 let rdkitPromise: Promise<any> | null = null;
+let scriptLoaded = false;
 
-// Debug configuration
 const DEBUG = true;
 const debugLog = (message: string, ...args: any[]) => {
   if (DEBUG) {
     console.log(`[RDKit Debug] ${message}`, ...args);
   }
+};
+
+const MAX_RETRIES = 5; // Increased from 3
+const TIMEOUT_MS = 180000; // 180 seconds (increased from 120)
+const RETRY_DELAY = 2000; // 2 seconds (increased from 1)
+const SCRIPT_LOAD_TIMEOUT = 10000; // 10 seconds
+
+type RDKitLoader = () => Promise<any>;
+
+declare global {
+  interface Window {
+    RDKitCustomPaths?: CustomPaths;
+    initRDKitModule: RDKitLoader;
+    RDKit: any;
+    Module?: any;
+    RDKitModuleIsReady?: boolean;
+  }
+}
+
+interface CustomPaths {
+  wasmPath?: string;
+  jsPath?: string;
+}
+
+// Function to dynamically load the RDKit JS script
+const loadRDKitScript = (jsPath: string): Promise<void> => {
+  if (scriptLoaded) return Promise.resolve();
+  
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = jsPath;
+    script.async = true;
+    
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`Script load timed out: ${jsPath}`));
+    }, SCRIPT_LOAD_TIMEOUT);
+    
+    script.onload = () => {
+      debugLog(`Script loaded successfully: ${jsPath}`);
+      clearTimeout(timeoutId);
+      scriptLoaded = true;
+      resolve();
+    };
+    
+    script.onerror = () => {
+      clearTimeout(timeoutId);
+      reject(new Error(`Failed to load script: ${jsPath}`));
+    };
+    
+    document.head.appendChild(script);
+  });
 };
 
 export const initRDKit = async () => {
@@ -26,80 +73,120 @@ export const initRDKit = async () => {
   if (!rdkitPromise) {
     debugLog("Creating new rdkitPromise");
     
-    rdkitPromise = new Promise((resolve, reject) => {
-      if (typeof window !== 'undefined') {
-        debugLog("Running in browser environment");
-        
-        // Use custom paths if configured, otherwise use defaults
-        const customPaths = window.RDKitCustomPaths || {};
-        const wasmPath = customPaths.wasmPath || '/static/wasm/RDKit_minimal.wasm';
-        const jsPath = customPaths.jsPath || '/static/wasm/RDKit_minimal.js';
-        
-        debugLog(`WASM Path: ${wasmPath}`);
-        debugLog(`JS Path: ${jsPath}`);
-        
-        // Pre-check WASM file availability
-        fetch(wasmPath)
-          .then(response => {
-            if (!response.ok) {
-              throw new Error(`WASM file not found (status: ${response.status})`);
-            }
-            debugLog("WASM file verified");
-            
-            // Set the locateFile function for RDKit module
-            const RDKitModule = {
-              locateFile: (file: string) => {
-                if (file.endsWith('.wasm')) {
-                  return wasmPath;
-                }
-                return jsPath;
-              }
-            };
-            
-            // Initialize RDKit with proper WASM location
-            return initRDKitModule(RDKitModule);
-          })
-          .then((RDKit) => {
-            debugLog("RDKit module initialized successfully");
-            rdkitInstance = RDKit;
-            resolve(RDKit);
-          })
-          .catch((error) => {
-            debugLog("Failed to initialize RDKit module", error);
-            reject(new Error(`Failed to initialize RDKit: ${error.message}`));
-          });
-      } else {
-        reject(new Error('RDKit initialization is only supported in browser environment'));
+    rdkitPromise = new Promise(async (resolve, reject) => {
+      if (typeof window === 'undefined') {
+        reject(new Error("RDKit initialization called in non-browser environment"));
+        return;
+      }
+
+      debugLog("Running in browser environment");
+
+      // Check if Module is already available (from RDKit_minimal.js)
+      if (window.Module) {
+        debugLog("Found existing Module, using it directly");
+        rdkitInstance = window.Module;
+        resolve(rdkitInstance);
+        return;
+      }
+      
+      const customPaths = window.RDKitCustomPaths || {};
+      const wasmPath = customPaths.wasmPath ?? '/static/wasm/RDKit_minimal.wasm';
+      const jsPath = customPaths.jsPath ?? '/static/wasm/RDKit_minimal.js';
+      
+      debugLog(`WASM Path: ${wasmPath}`);
+      debugLog(`JS Path: ${jsPath}`);
+      
+      // Try to load the script first if initRDKitModule is not available
+      if (typeof window.initRDKitModule !== 'function') {
+        try {
+          debugLog("Loading RDKit script dynamically");
+          await loadRDKitScript(jsPath);
+        } catch (scriptError) {
+          debugLog(`Script loading error: ${scriptError.message}`);
+          // Continue anyway, as the script might be loaded through other means
+        }
+      }
+      
+      let attempts = 0;
+      while (attempts < MAX_RETRIES) {
+        attempts++;
+        try {
+          // Check if initRDKitModule is available
+          if (typeof window.initRDKitModule !== 'function') {
+            debugLog(`initRDKitModule not found, waiting... (attempt ${attempts}/${MAX_RETRIES})`);
+            await new Promise(r => setTimeout(r, RETRY_DELAY));
+            continue;
+          }
+
+          const initStartTime = Date.now();
+          debugLog(`Calling initRDKitModule (attempt ${attempts}/${MAX_RETRIES})`);
+          
+          const result = await Promise.race([
+            window.initRDKitModule(),
+            new Promise((_, reject) => {
+              setTimeout(() => {
+                const elapsed = (Date.now() - initStartTime) / 1000;
+                reject(new Error(`RDKit initialization timed out after ${elapsed.toFixed(1)}s`));
+              }, TIMEOUT_MS);
+            })
+          ]);
+          
+          if (!result) {
+            throw new Error("RDKit initialization returned null or undefined");
+          }
+          
+          // Verify that the RDKit instance has the expected methods
+          if (!result.version || typeof result.version !== 'function') {
+            throw new Error("Invalid RDKit instance: missing version method");
+          }
+
+          rdkitInstance = result;
+          window.RDKitModuleIsReady = true;
+          window.RDKit = result; // Make RDKit available globally for convenience
+          debugLog("RDKit initialized successfully");
+          resolve(rdkitInstance);
+          return;
+          
+        } catch (error) {
+          debugLog(`Initialization attempt ${attempts} failed:`, error);
+          
+          // Check if we've reached max retries
+          if (attempts >= MAX_RETRIES) {
+            const errorMessage = `RDKit initialization failed after ${MAX_RETRIES} attempts. Please check your network connection and try refreshing the page.`;
+            debugLog(errorMessage);
+            reject(new Error(errorMessage));
+            rdkitPromise = null; // Reset promise to allow future retries
+            return;
+          }
+          
+          // Exponential backoff for retries
+          const backoffDelay = RETRY_DELAY * Math.pow(1.5, attempts - 1);
+          debugLog(`Retrying in ${backoffDelay}ms...`);
+          await new Promise(r => setTimeout(r, backoffDelay));
+          attempts++;
+        }
       }
     });
   }
-  
+
   try {
-    const instance = await rdkitPromise;
-    return instance;
+    return await rdkitPromise;
   } catch (error) {
-    debugLog("Error in initRDKit", error);
-    rdkitPromise = null; // Reset promise to allow retry
+    rdkitPromise = null; // Reset promise on error
     throw error;
   }
 };
 
 // Alternative paths configuration
 export const configureRDKitPaths = (wasmPath: string, jsPath: string) => {
-  // Allow override of paths for environments with different file structures
-  window.RDKitCustomPaths = {
-    wasmPath,
-    jsPath
-  };
-  
-  // Reset any existing initialization
-  rdkitInstance = null;
-  rdkitPromise = null;
-  
-  debugLog(`RDKit paths configured to WASM: ${wasmPath}, JS: ${jsPath}`);
+  if (typeof window !== 'undefined') {
+    window.RDKitCustomPaths = { wasmPath, jsPath };
+    rdkitInstance = null;
+    rdkitPromise = null;
+    debugLog(`RDKit paths configured to WASM: ${wasmPath}, JS: ${jsPath}`);
+  }
 };
 
-// Enhanced rendering function with better error handling
 export const renderMoleculeFromSmiles = async (
   smiles: string, 
   elementId: string, 
@@ -112,7 +199,6 @@ export const renderMoleculeFromSmiles = async (
     const RDKit = await initRDKit();
     debugLog("RDKit initialized, creating molecule");
     
-    // Create a molecule object from SMILES
     const mol = RDKit.get_mol(smiles);
     if (!mol) {
       debugLog(`Failed to create molecule from SMILES: ${smiles}`);
@@ -127,15 +213,12 @@ export const renderMoleculeFromSmiles = async (
     
     debugLog("Molecule created, generating image");
     
-    // Generate an SVG of the molecule
     const svg = mol.get_svg(width, height);
     mol.delete();
     
-    // Create an image element from the SVG
     const img = new Image();
     img.src = 'data:image/svg+xml;base64,' + btoa(svg);
     
-    // Insert the image into the DOM
     const element = document.getElementById(elementId);
     if (element) {
       element.innerHTML = '';
@@ -150,7 +233,6 @@ export const renderMoleculeFromSmiles = async (
   } catch (error) {
     debugLog("Error rendering molecule", error);
     
-    // Display error in the element
     try {
       const element = document.getElementById(elementId);
       if (element) {
@@ -160,14 +242,12 @@ export const renderMoleculeFromSmiles = async (
         </div>`;
       }
     } catch (e) {
-      // Ignore errors in error handling
     }
     
     return false;
   }
 };
 
-// Alternative HTML-based approach that doesn't rely on existing elements
 export const createMoleculeElement = async (smiles: string, width: number = 300, height: number = 200) => {
   debugLog(`Creating standalone molecule element for SMILES: "${smiles}"`);
   
@@ -199,16 +279,13 @@ export const createMoleculeElement = async (smiles: string, width: number = 300,
   }
 };
 
-// Example debugging helper
 export const testRDKitSetup = async () => {
   try {
     debugLog("Testing RDKit setup");
     
-    // Test basic initialization
     const RDKit = await initRDKit();
     debugLog("RDKit initialized");
     
-    // Test SMILES parsing
     const testSmiles = ["C", "CC", "CCC", "c1ccccc1", "CC(=O)OC1=CC=CC=C1C(=O)O"];
     
     for (const smiles of testSmiles) {
@@ -235,7 +312,6 @@ export const testRDKitSetup = async () => {
   }
 };
 
-// Direct SVG string generation without DOM manipulation
 export const getSvgStringFromSmiles = async (
   smiles: string,
   width: number = 300,
@@ -259,7 +335,6 @@ export const getSvgStringFromSmiles = async (
   }
 };
 
-// Public API check for easier debugging
 export const checkRDKitStatus = () => {
   if (typeof window === 'undefined') {
     return 'Not in browser environment';
@@ -268,13 +343,13 @@ export const checkRDKitStatus = () => {
   return {
     rdkitInstance: rdkitInstance ? 'Initialized' : 'Not initialized',
     rdkitPromise: rdkitPromise ? 'Pending' : 'Not created',
-    RDKitModuleIsReady: window.RDKitModuleIsReady || false,
+    RDKitModuleIsReady: !!window.RDKitModuleIsReady,
     windowHasRDKit: !!window.RDKit,
-    windowHasInitModule: !!window.initRDKitModule
+    windowHasInitModule: !!window.initRDKitModule,
+    hasModule: !!window.Module
   };
 };
 
-// Fallback to direct import for environments that support it
 export const tryDirectImport = async () => {
   try {
     debugLog("Trying direct import of RDKit");
@@ -290,18 +365,4 @@ export const tryDirectImport = async () => {
     throw error;
   }
 };
-
-declare global {
-  type RDKitLoader = () => Promise<any>;
-
-  interface Window {
-    RDKit: RDKitLoader;
-    initRDKitModule: RDKitLoader;
-    RDKitModuleIsReady: boolean;
-    RDKitCustomPaths?: {
-      wasmPath: string;
-      jsPath: string;
-    };
-  }
-}
 

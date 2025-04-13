@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const sourceDir = path.resolve(__dirname, '../node_modules/@rdkit/rdkit/dist');
-const targetDir = path.resolve(__dirname, '../public/static/wasm');
+const sourceDir = path.resolve(__dirname, '../../node_modules/@rdkit/rdkit/dist');
+const targetDir = path.resolve(__dirname, '../static/wasm');
 
 // Create target directory if it doesn't exist
 if (!fs.existsSync(targetDir)) {
@@ -25,8 +25,10 @@ files.forEach(file => {
       console.log(`Successfully copied ${file} to ${targetPath}`);
     } else {
       console.error(`Source file not found: ${sourcePath}`);
+      process.exit(1);
     }
   } catch (error) {
     console.error(`Error copying ${file}:`, error);
+    process.exit(1);
   }
 });

@@ -4,17 +4,19 @@
 .pnp.js
 .yarn/install-state.gz
 descriptions.txt
+
 # testing
 /coverage
 oldpage
+
 # next.js
 /.next/
 /out/
-.env
-/.env
+
 # production
 /build
 outline.md
+
 # misc
 .DS_Store
 *.pem
@@ -26,6 +28,8 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.env
+/.env
 
 # vercel
 .vercel
@@ -33,3 +37,48 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs
+*.log
+
+# Test files
+test_*.ps1
+test_*.py
+test_*.sh
+test_*.bat
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+esmfold_results/
+*.stackdump
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json

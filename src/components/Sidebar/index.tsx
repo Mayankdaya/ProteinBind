@@ -12,8 +12,8 @@ import {
   Atom,
   Network,
   Microscope,
-  MessageSquareText,
   ChevronLeft,
+  Dna
 } from "lucide-react";
 
 interface SidebarProps {
@@ -41,14 +41,14 @@ const menuGroups = [
         route: "/model",
       },
       {
+        icon: <Dna size={25} />,
+        label: "ESMfold",
+        route: "/alphafold",
+      },
+      {
         icon: <Microscope size={25} />,
         label: "Research",
         route: "/research",
-      },
-      {
-        icon: <MessageSquareText size={25} />,
-        label: "Messages",
-        route: "/message",
       },
     ],
   },

@@ -6,97 +6,54 @@ export const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization'
 };
 
+const NGC_API_KEY = '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';
+
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const API_KEY = process.env.NVIDIA_API_KEY;
-
-    if (!API_KEY) {
-      console.error('NVIDIA API key is missing');
+    const { sequence } = await req.json();
+    
+    if (!sequence) {
       return NextResponse.json(
-        { error: 'API key configuration error' },
-        { status: 500, headers: corsHeaders }
+        { error: 'Protein sequence is required' },
+        { status: 400 }
       );
     }
 
-    console.log('Request payload:', JSON.stringify(body, null, 2));
-
-    const response = await fetch('https://health.api.nvidia.com/v1/biology/nvidia/molmim/generate', {
+    const nimUrl = 'http://localhost:8000/protein-structure/alphafold2/predict-structure-from-sequence';
+    
+    const response = await fetch(nimUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
-        'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'User-Agent': 'curl/7.64.1'
+        'Authorization': `Bearer ${NGC_API_KEY}`,
       },
       body: JSON.stringify({
-        algorithm: body.algorithm || "CMA-ES",
-        num_molecules: parseInt(body.num_molecules) || 30,
-        property_name: body.property_name || "QED",
-        minimize: Boolean(body.minimize),
-        min_similarity: parseFloat(body.min_similarity) || 0.3,
-        particles: parseInt(body.particles) || 30,
-        iterations: parseInt(body.iterations) || 10,
-        smi: body.smi
-      })
+        sequence,
+        databases: ["small_bfd"],
+        e_value: 0.000001,
+        algorithm: "mmseqs2",
+        relax_prediction: false,
+        max_template_date: "2024-01-01", // Current date for latest templates
+        num_multimer_predictions_per_model: 1,
+      }),
     });
 
-    const responseText = await response.text();
-    console.log('Raw NVIDIA API Response:', responseText);
-
     if (!response.ok) {
-      return NextResponse.json(
-        { error: `NVIDIA API Error: ${response.status}` },
-        { status: response.status, headers: corsHeaders }
-      );
+      const error = await response.text();
+      throw new Error(`NIM service error: ${error}`);
     }
 
-    let rawData;
-    try {
-      rawData = JSON.parse(responseText);
-      // The molecules field is a string that needs to be parsed again
-      if (typeof rawData.molecules === 'string') {
-        rawData.molecules = JSON.parse(rawData.molecules);
-      }
-    } catch (e) {
-      console.error('Failed to parse NVIDIA API response:', e);
-      return NextResponse.json(
-        { error: 'Invalid JSON response from NVIDIA API' },
-        { status: 500, headers: corsHeaders }
-      );
-    }
+    const data = await response.json();
+    return NextResponse.json(data, { headers: corsHeaders });
 
-    // Transform the data to match expected format
-    const molecules = Array.isArray(rawData.molecules) 
-      ? rawData.molecules.map((mol: any) => ({
-          smiles: mol.sample || '',  // NVIDIA API uses 'sample' for SMILES
-          structure: mol.sample || '',
-          score: typeof mol.score === 'number' ? mol.score : 0
-        }))
-      : [];
-
-    console.log('Transformed molecules:', molecules);
-
-    if (molecules.length === 0) {
-      return NextResponse.json(
-        { error: 'No molecules generated' },
-        { status: 404, headers: corsHeaders }
-      );
-    }
-
-    return NextResponse.json({ molecules }, { headers: corsHeaders });
-
-  } catch (error: any) {
-    console.error('Error in NVIDIA API proxy:', error);
+  } catch (error) {
+    console.error('AlphaFold2 prediction error:', error);
     return NextResponse.json(
-      { 
-        error: 'Failed to process request',
-        details: error.message
-      },
+      { error: 'Failed to predict protein structure' },
       { status: 500, headers: corsHeaders }
     );
   }
