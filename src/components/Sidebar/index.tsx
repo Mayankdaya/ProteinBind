@@ -42,7 +42,7 @@ const menuGroups = [
       },
       {
         icon: <Dna size={25} />,
-        label: "ESMfold",
+        label: "3D Structure Predictor",
         route: "/alphafold",
       },
       {

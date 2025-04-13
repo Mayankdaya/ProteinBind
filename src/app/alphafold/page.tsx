@@ -79,7 +79,7 @@ export default function AlphaFoldPage() {
   return (
     <DefaultLayout>
       <div className="mx-auto max-w-screen-2xl">
-        <ComponentHeader pageName="ESMfold Structure Prediction" />
+        <ComponentHeader pageName="Protein Structure Predictor" />
         
         <div className="rounded-sm border border-stroke bg-white shadow-default dark:border-strokedark dark:bg-boxdark">
           <div className="p-6.5">
