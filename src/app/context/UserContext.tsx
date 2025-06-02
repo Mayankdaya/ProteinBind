@@ -10,8 +10,8 @@ interface UserData {
 }
 
 const defaultUserData: UserData = {
-  firstName: "John",
-  lastName: "Doe",
+  firstName: "Mayank Dayal",
+  lastName: "User",
   photo: "/images/user/user-01.png",
   jobTitle: "Researcher",
   userBio: "Drug Researcher specializing in protein binding analysis",

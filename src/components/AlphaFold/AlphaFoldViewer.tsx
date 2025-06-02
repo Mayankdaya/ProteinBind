@@ -18,6 +18,8 @@ const AlphaFoldViewer: React.FC<AlphaFoldViewerProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [isRocking, setIsRocking] = useState(false);
 
   // Initialize NGL Stage
   useEffect(() => {
@@ -93,6 +95,12 @@ const AlphaFoldViewer: React.FC<AlphaFoldViewerProps> = ({
 
     initStage();
   }, [width, height]);
+
+  // Reset animation states when loading new structure
+  useEffect(() => {
+    setIsSpinning(false);
+    setIsRocking(false);
+  }, [pdbStructure]);
 
   // Handle structure loading - only run when both initialized and pdbStructure exists
   useEffect(() => {
@@ -258,30 +266,35 @@ const AlphaFoldViewer: React.FC<AlphaFoldViewerProps> = ({
           <button 
             onClick={() => {
               if (viewerRef.current) {
-                viewerRef.current.setSpin(true);
-                viewerRef.current.viewer.requestRender();
+                const newSpinState = !isSpinning;
+                viewerRef.current.spin(newSpinState ? 1 : 0);
+                setIsSpinning(newSpinState);
               }
             }}
             className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
-            Toggle Spin
+            {isSpinning ? 'Stop Spin' : 'Start Spin'}
           </button>
           <button 
             onClick={() => {
               if (viewerRef.current) {
-                viewerRef.current.setRock(true);
-                viewerRef.current.viewer.requestRender();
+                const newRockState = !isRocking;
+                viewerRef.current.rock(newRockState ? 1 : 0);
+                setIsRocking(newRockState);
               }
             }}
             className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
-            Toggle Rock
+            {isRocking ? 'Stop Rock' : 'Start Rock'}
           </button>
           <button 
             onClick={() => {
-              if (viewerRef.current && viewerRef.current.viewer) {
+              if (viewerRef.current) {
+                viewerRef.current.spin(0);
+                viewerRef.current.rock(0);
                 viewerRef.current.autoView();
-                viewerRef.current.viewer.requestRender();
+                setIsSpinning(false);
+                setIsRocking(false);
               }
             }}
             className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"

@@ -22,8 +22,8 @@ const ChartThree: React.FC = () => {
           <div className="flex items-start gap-2.5">
             <img
               className="h-8 w-8 rounded-full"
-              src={user.photo}
-              alt="Jese image"
+              src="/images/user/istockphoto-1332100919-612x612.jpg"
+              alt="User profile"
             />
 
             <div className="leading-1.5 border-gray-200 dark:bg-gray-700 flex w-full max-w-[320px] flex-col rounded-e-xl rounded-es-xl bg-[#f3f4f6] p-4">
